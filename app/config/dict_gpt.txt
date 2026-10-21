@@ -1,0 +1,10 @@
+// GPT 词典：作为翻译提示词中的词条对照，让模型翻译时遵守固定译法。
+// 每行一条：原文<Tab>译文
+// 适合固定人名、术语译法。示例：
+// ウマ娘	赛马娘
+// トレセン学園	训练中心学园
+
+// 2026-10-11: official Japanese names and existing user Chinese term; unresolved Chinese names stay explicit.
+ラモーヌ	ラモーヌ [待确认]
+ラモさん	ラモさん [待确认]
+アルダン	阿尔丹

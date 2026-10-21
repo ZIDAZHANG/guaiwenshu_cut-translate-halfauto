@@ -1,0 +1,120 @@
+{
+  "proxy": "",
+  "work_dir": "work",
+  "external_tools": {
+    "auto_detect": true,
+    "magia_root": "",
+    "voice_root": "",
+    "voice_native": {
+      "project_config": "",
+      "pre_dictionary": "",
+      "gpt_dictionary": "",
+      "post_dictionary": "",
+      "basic_guideline": ""
+    }
+  },
+  "media_compatibility": {
+    "auto_convert": true,
+    "accepted_containers": [
+      ".mp4"
+    ],
+    "accepted_video_codecs": [
+      "h264"
+    ],
+    "preset": "fast",
+    "crf": 18
+  },
+  "batch_settings": {
+    "continue_on_error": true,
+    "inactivity_timeout_minutes": 0
+  },
+  "tools": {
+    "yt_dlp": "yt-dlp",
+    "ffmpeg": "ffmpeg",
+    "axis_generator": "",
+    "jp_recognizer": "",
+    "machine_translator": "",
+    "python": "python"
+  },
+  "resources": {
+    "translation_prompt": "config/translation_style_prompt.txt",
+    "translation_glossary": "config/translation_glossary.json"
+  },
+  "commands": {
+    "download": "{yt_dlp} {proxy_arg} --newline --write-info-json --merge-output-format mp4 -o \"{job_dir}/source/video.%(ext)s\" \"{url}\"",
+    "extract_audio": "{ffmpeg} -y -i \"{video}\" -vn -ac 1 -ar 16000 \"{audio}\"",
+    "axis": "\"{python}\" \"{root}/tools/magia_timeline_adapter.py\" --config \"{config_path}\" --video \"{video}\" --output \"{timeline}\"",
+    "recognize_jp": "\"{python}\" \"{root}/tools/voicetransl_adapter.py\" recognize --config \"{config_path}\" --audio \"{audio}\" --output \"{jp}\"",
+    "translate_zh": "\"{python}\" \"{root}/tools/voicetransl_adapter.py\" translate --config \"{config_path}\" --input \"{jp}\" --output \"{zh}\""
+  },
+  "expected_outputs": {
+    "timeline": "{job_dir}/subs/timeline.ass",
+    "jp": "{job_dir}/subs/jp_ocr.srt",
+    "zh": "{job_dir}/subs/zh_machine.srt",
+    "final": "{job_dir}/deliverables/final.ass",
+    "review": "{job_dir}/deliverables/review.csv",
+    "jianying_import": "{job_dir}/jianying_import",
+    "jianying_status": "{job_dir}/jianying_status.json"
+  },
+  "alignment": {
+    "tolerance_ms": 1200,
+    "fallback": "none",
+    "mark_low": false,
+    "timing_mode": "mixed"
+  },
+  "jianying_ui": {
+    "enabled": false,
+    "create_new_draft": true
+  },
+  "recognition": {
+    "enabled": true,
+    "engine": "VoiceTransl Whisper",
+    "executable": "",
+    "model": "",
+    "language": "ja",
+    "vad": true,
+    "word_timestamps": true
+  },
+  "axis_settings": {
+    "enabled": true,
+    "executable": "",
+    "strategy": "dtd",
+    "preset": "default",
+    "engine": "speculative",
+    "max_resolution": 0,
+    "dialog_rect": [
+      0.0,
+      1.0,
+      0.0,
+      1.0
+    ],
+    "ocr": true
+  },
+  "translation": {
+    "enabled": true,
+    "engine": "Sakura 本地模型",
+    "executable": "",
+    "server_executable": "",
+    "model": "",
+    "endpoint": "http://127.0.0.1:8989",
+    "gpu_layers": 100,
+    "context_size": 16384,
+    "workers": 1,
+    "batch_size": 10,
+    "temperature": 0.3,
+    "top_p": 0.8,
+    "use_native_dictionaries": true,
+    "native_pre_dictionary": "",
+    "native_gpt_dictionary": "",
+    "native_post_dictionary": "",
+    "native_guideline": "",
+    "native_project_config": "",
+    "native_prompt_mode": "不使用"
+  },
+  "forced_alignment": {
+    "enabled": false,
+    "python": "",
+    "model": "",
+    "model_manifest": ""
+  }
+}

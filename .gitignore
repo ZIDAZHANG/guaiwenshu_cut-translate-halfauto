@@ -1,0 +1,35 @@
+# Private local settings / credentials
+.env
+.env.*
+!.env.example
+*.local.json
+autorun.once.json
+cookies*.txt
+*.pem
+*.key
+# Python / builds / generated task data
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+/dist/
+/build/work/
+/test-results/
+/app/work/
+/app/output/
+/app/runtime/
+/app/inbox/
+*.log
+# Media, model weights and third-party binaries are not source
+*.exe
+*.dll
+*.gguf
+*.bin
+*.safetensors
+*.onnx
+*.mp4
+*.webm
+*.mkv
+*.wav
+*.mp3
+*.zip

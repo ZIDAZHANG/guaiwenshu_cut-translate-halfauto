@@ -1,0 +1,502 @@
+{
+  "source_version": "2026-10-12 usable local candidate; segmentation version 8",
+  "publication_date": "2026-10-22",
+  "files": [
+    {
+      "source": "fix_stage/tools/artifact_validation.py",
+      "published": "app/tools/artifact_validation.py",
+      "source_sha256": "bc68671c6a200459fc0d08394faee3a95d4edd3cab7154ecfa9527659189ef75",
+      "published_sha256": "bc68671c6a200459fc0d08394faee3a95d4edd3cab7154ecfa9527659189ef75",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/artifact_validation_test.py",
+      "published": "tests/artifact_validation_test.py",
+      "source_sha256": "fa9ba6b1beccf1d769d39701428dc7933b8d41f9c109eed33b9fc8a33d089c5b",
+      "published_sha256": "fa9ba6b1beccf1d769d39701428dc7933b8d41f9c109eed33b9fc8a33d089c5b",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/batch_queue_smoke_test.py",
+      "published": "tests/batch_queue_smoke_test.py",
+      "source_sha256": "4ba50a54044764ab4d685ff08ae7167d50487395c25c160d81f4d8698ba4139c",
+      "published_sha256": "768675578bfde1a6d2980e6ed74843abdc405d11d8d617939d21029cb7fa405b",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/capture_app_window.py",
+      "published": "app/tools/capture_app_window.py",
+      "source_sha256": "bda3c625256d6e1d1c348327c23b0d31a0d1bbd8d31a4fe6f64ca733ec6ed784",
+      "published_sha256": "bda3c625256d6e1d1c348327c23b0d31a0d1bbd8d31a4fe6f64ca733ec6ed784",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/diagnostics.py",
+      "published": "app/tools/diagnostics.py",
+      "source_sha256": "074b2599de740a3cc1797abbc5daf04020d66f8b9a7c7f9c08ae7991349ce363",
+      "published_sha256": "214924687bc95d52985f39b59d5ed5a3bf85d39236ed4039b9047e2ba482ee98",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/diagnostics_test.py",
+      "published": "tests/diagnostics_test.py",
+      "source_sha256": "057eb2cec3828d76531b5810fbab651a5f7fc320853a1a28f7ce56500c75c584",
+      "published_sha256": "cae23fdca63746d48164aee2f127d2e949b0bbef88ce1d930fd95419b31a4c5b",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/dictionary_editor.py",
+      "published": "app/tools/dictionary_editor.py",
+      "source_sha256": "3f098bff34620959b7c0e318828966aebbf35ff4ce54394af5e0238ab28ab61d",
+      "published_sha256": "3f098bff34620959b7c0e318828966aebbf35ff4ce54394af5e0238ab28ab61d",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/dictionary_editor_test.py",
+      "published": "tests/dictionary_editor_test.py",
+      "source_sha256": "9fbce00a9defd3321836f5bb4b1fb625b4fd19e28f6e29c0e90c4606bfce7905",
+      "published_sha256": "9fbce00a9defd3321836f5bb4b1fb625b4fd19e28f6e29c0e90c4606bfce7905",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/forced_alignment.py",
+      "published": "app/tools/forced_alignment.py",
+      "source_sha256": "3f9770959752f633aff229e0556fa1f022a9f9583fb10c74a7bf7de95d26291e",
+      "published_sha256": "a3adfcda30c1acc354af781a3ac2cd781576695f0c825719251606e98d5a2423",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/forced_alignment_test.py",
+      "published": "tests/forced_alignment_test.py",
+      "source_sha256": "ed039571f72f19167562f74b9f4f5edb706fabf8a1f3b3d45c484c7e403477ff",
+      "published_sha256": "0eab8ce9c2d41ebf519cf6c81f1e210e306d0815b939e3a82a2db39eb5300200",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/jianying_bridge.py",
+      "published": "app/tools/jianying_bridge.py",
+      "source_sha256": "abd76449e21f1498059b4c143c96f9f2da51c40e3c614587bfb9ed06b6ac6af4",
+      "published_sha256": "03ee0e78e66fceb055163342eb31095d37f397a120784ee2ae878ab178c25777",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/jianying_bridge_test.py",
+      "published": "tests/jianying_bridge_test.py",
+      "source_sha256": "9f253e2fee7e87fc6452e5c44ebf9b2f8e373ba05bd3ec535914559825ef2776",
+      "published_sha256": "9f253e2fee7e87fc6452e5c44ebf9b2f8e373ba05bd3ec535914559825ef2776",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/jianying_ui_import.py",
+      "published": "app/tools/jianying_ui_import.py",
+      "source_sha256": "3bed4b560b280cfe435125dd17ef6ad74ed23a14f9b2ad93a1200754a070c282",
+      "published_sha256": "3bed4b560b280cfe435125dd17ef6ad74ed23a14f9b2ad93a1200754a070c282",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/jianying_ui_selection_test.py",
+      "published": "tests/jianying_ui_selection_test.py",
+      "source_sha256": "1478fdb1ec7e2d9091a50c1ce56ff51f8c71e35a5823f615546b58cedae208e4",
+      "published_sha256": "1478fdb1ec7e2d9091a50c1ce56ff51f8c71e35a5823f615546b58cedae208e4",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/jianying_uia_probe.py",
+      "published": "app/tools/jianying_uia_probe.py",
+      "source_sha256": "14dddb756e8cd9c8da493bd0b2756077a147dc7054a1bba580b282641cc40c37",
+      "published_sha256": "14dddb756e8cd9c8da493bd0b2756077a147dc7054a1bba580b282641cc40c37",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/magia_timeline_adapter.py",
+      "published": "app/tools/magia_timeline_adapter.py",
+      "source_sha256": "867031c6f6300240742acc9ac14142482bc2beec99526a326220ef83d3657648",
+      "published_sha256": "dcff0f9b2e6fdeacc466c913616c0157ec46387917837605b4dc846b8e02ecd7",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/magia_timeline_adapter_test.py",
+      "published": "tests/magia_timeline_adapter_test.py",
+      "source_sha256": "02dbe6991c70a2d5cef27b4cfc72299906b07d54e364e2edd983bd2aa8f20975",
+      "published_sha256": "3e59c67ae4dee560c9ca7ebfd619a50489a6628a293b2e0287e2c4aacce17d53",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/magia_utf8_runtime.py",
+      "published": "app/tools/magia_utf8_runtime.py",
+      "source_sha256": "f214db8d2bca529ede50e67644c54caf89e68123fdbdeda155c36736dbe14dd0",
+      "published_sha256": "f214db8d2bca529ede50e67644c54caf89e68123fdbdeda155c36736dbe14dd0",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/magia_utf8_runtime_test.py",
+      "published": "tests/magia_utf8_runtime_test.py",
+      "source_sha256": "bd90509deece338a6cd81ae5d51e7b216326bdae9c963f079153b7add4daa8fe",
+      "published_sha256": "a04c3d3cd02af581cc3e0b3301a5e3189880c3e93f0161bf9d03e664db86046c",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/one_click_roast.py",
+      "published": "app/tools/one_click_roast.py",
+      "source_sha256": "cf74785d9551b5488a7c5b26a081472f34c5fbcebf908c7bd3550ab8997616cb",
+      "published_sha256": "f98399625d06141e779fa1cace054b131788c34efcbff514a4ec793561775cae",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/release_sync.py",
+      "published": "app/tools/release_sync.py",
+      "source_sha256": "8c3aa5822fff47ac41437b99931e13b88019f08cf4dfd2c8b80fd9e92ebe4105",
+      "published_sha256": "91b04ac91578ec67790635448edbbe524ed712439ab77b1741677f2e121a5187",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "source-sync manifest contains runtime modules; tests live separately"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/release_sync_test.py",
+      "published": "tests/release_sync_test.py",
+      "source_sha256": "8e5cce4f6b6bf38d11433a86d2f7f5dd2cb6082594f72a3630888f2967936022",
+      "published_sha256": "5800c0ac82f8e18b491703b2f514902d6c30d10791affe72ed6a936568e359b4",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/roast_inbox.py",
+      "published": "app/tools/roast_inbox.py",
+      "source_sha256": "2dbabea1286d935daeae096acff2151ac4d595c88d451554790ed9ff32596e1f",
+      "published_sha256": "a73739e96835aab7123ceafee08ba08fb511a375836f1770925fe9c3de521f9c",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/roast_pipeline.py",
+      "published": "app/tools/roast_pipeline.py",
+      "source_sha256": "d59a6ed98582c31de29b0da1ea0b3506878572abfd7c2c32bde08b54ea1f27c9",
+      "published_sha256": "52a028ba2b28aff543a2a3f34c7e29b81c6261a2efa426273d4f07077394e33b",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/sakura_client.py",
+      "published": "app/tools/sakura_client.py",
+      "source_sha256": "bb2e3e0d73323c6f43c5d38eb2960e659173e3f98b2258be042f3c5546d76bbf",
+      "published_sha256": "7698ad645beddfd0728670331535c4ee80bca394e07536ec1d57f029844d6280",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/sakura_client_test.py",
+      "published": "tests/sakura_client_test.py",
+      "source_sha256": "925a1e50f7f357aae5e6621a9448e82b8574641c458524f97404785dea4beb21",
+      "published_sha256": "c4a642d696ea83793cbd0d39b11c2c65039bfc2f23c83f91c1f924ecbe785872",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/segmentation_cache_test.py",
+      "published": "tests/segmentation_cache_test.py",
+      "source_sha256": "66705358b9737b2b5a26ddfe8622b2e7f729ef521bf5cc005ba588eb75e19a40",
+      "published_sha256": "3d13aaf2ee64e0687d290dd9f2b86d974fadd4a678c24ca991cec133a0872391",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory",
+        "portable FFmpeg lookup and repository-owned test-results directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/smoke_test.py",
+      "published": "tests/smoke_test.py",
+      "source_sha256": "20b5719957c6476d774bfbe41751dd5c118d5b033fcba9e2d1f11dd567165b84",
+      "published_sha256": "2c52080303a131d3ee0e47c10c7fd405ff140e32301f2041208a65e4c27f7438",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory",
+        "synthetic-media test config from the example; never requires a private local config"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/subtitle_axis_align.py",
+      "published": "app/tools/subtitle_axis_align.py",
+      "source_sha256": "eb93250fe2247932bd9262c86bef3a8be97affbefd227b5b0d796d57a5c8b4f9",
+      "published_sha256": "e2ce4461fc1b868ef9954433b951537e505ae6d55a6c3afd3626b4495cb16e12",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/subtitle_axis_align_test.py",
+      "published": "tests/subtitle_axis_align_test.py",
+      "source_sha256": "778369392ceb410e7c72d2f4d522cc1480b021355d1287f087fb74848abf0e33",
+      "published_sha256": "6e5e44ca046359797a4f35aca741d4c970681a60f150ad4d40a126f2d610441c",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/subtitle_quality_test.py",
+      "published": "tests/subtitle_quality_test.py",
+      "source_sha256": "380417a8637e4e94bede365fbbbcc012c55eabdaaee56c3ca96d6de040102014",
+      "published_sha256": "380417a8637e4e94bede365fbbbcc012c55eabdaaee56c3ca96d6de040102014",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/subtitle_segments.py",
+      "published": "app/tools/subtitle_segments.py",
+      "source_sha256": "ac4845b474d5e28f56dc9dc4ec789a2a5d945b844f4bd69b30a506ad85e1f37a",
+      "published_sha256": "be0d8f0611edfc25ea2299e94dc12f8d66d1009b3dab7c7a48172405371891a1",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/subtitle_segments_test.py",
+      "published": "tests/subtitle_segments_test.py",
+      "source_sha256": "c62f74e97e8e6e3b7a7ef6127853a3a9cb835fb93f1a0714c9d96e22b7305aa2",
+      "published_sha256": "202b94bd9b5d5983748f9c2184b7d33596d0c5cf9ab534d8ab93e828d83da289",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/task_state.py",
+      "published": "app/tools/task_state.py",
+      "source_sha256": "95173e25b9f433971796a41f5af6c6c98bb13934b1a2f8353aa82174c68fbb0f",
+      "published_sha256": "95173e25b9f433971796a41f5af6c6c98bb13934b1a2f8353aa82174c68fbb0f",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/task_state_test.py",
+      "published": "tests/task_state_test.py",
+      "source_sha256": "4c5c4a316a24e38546222002c42aac25e3fac3e538b105da8e279f52a38fe618",
+      "published_sha256": "4c5c4a316a24e38546222002c42aac25e3fac3e538b105da8e279f52a38fe618",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/tool_discovery.py",
+      "published": "app/tools/tool_discovery.py",
+      "source_sha256": "5a0fbfb88b59498fac90bbfbd34e6601871177234bf958a179e264d8c1f4b933",
+      "published_sha256": "5a0fbfb88b59498fac90bbfbd34e6601871177234bf958a179e264d8c1f4b933",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/tool_discovery_test.py",
+      "published": "tests/tool_discovery_test.py",
+      "source_sha256": "ac350bf5a5b3fa2ca221b6d722e7c23084b327904851ec547b22ffee7b47a07d",
+      "published_sha256": "682eadd59a1e1649654fe8beeef876fbd72cbb7dff3822d534c4b25a67b3318b",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/translation_checkpoint.py",
+      "published": "app/tools/translation_checkpoint.py",
+      "source_sha256": "0d11970fbfc6a0fc6b2d9a465bde1ab187ce2f9506c12071a98c9cc0efc8e6c5",
+      "published_sha256": "0d11970fbfc6a0fc6b2d9a465bde1ab187ce2f9506c12071a98c9cc0efc8e6c5",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/ui_process_tree_test.py",
+      "published": "tests/ui_process_tree_test.py",
+      "source_sha256": "d816da82faf1ae073259aa013f8cf1d7ea8c9656ac0c46ed67178c6469dcfacc",
+      "published_sha256": "fa2a69a3277c063e5cbfe2d846e1560d2388f2196b5e7c2abd47501c37dd39dc",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/unrestricted_pipeline_test.py",
+      "published": "tests/unrestricted_pipeline_test.py",
+      "source_sha256": "e25ef01d81cf107cb72d2c20e09bd12688ea44ae759f9f6bd082ab7ce851a200",
+      "published_sha256": "cb5b7caf6d2f03c80852e2c3504e0df91b630329dfd63515136d8f447b7333ae",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory",
+        "remove trailing blank line at EOF"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/voice_common.py",
+      "published": "app/tools/voice_common.py",
+      "source_sha256": "6238d6b13a4a229e222835994646946821448cc298550032fd334f2eec36b085",
+      "published_sha256": "6238d6b13a4a229e222835994646946821448cc298550032fd334f2eec36b085",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/voice_dictionary.py",
+      "published": "app/tools/voice_dictionary.py",
+      "source_sha256": "839d70444e5a54fcf0b83530c8c019d8aa3b3f0d23302b8e6d8edba66151d900",
+      "published_sha256": "839d70444e5a54fcf0b83530c8c019d8aa3b3f0d23302b8e6d8edba66151d900",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/voicetransl_adapter.py",
+      "published": "app/tools/voicetransl_adapter.py",
+      "source_sha256": "159d941c56948c2a16fe3282e64dd34324695548ab885c9bc762a9a520a4f759",
+      "published_sha256": "6cab3d9d6de581ea12568545dc52c3a2608f47c1750771b015e6e97b6f6ed200",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/voicetransl_adapter_test.py",
+      "published": "tests/voicetransl_adapter_test.py",
+      "source_sha256": "52e8e2288382957ae25737e4e391ea42d4f014fb994e119d3a6a9c6d0186010c",
+      "published_sha256": "ef0fd99e1fda6bc838abdf99c4e34f55194338ab0fb66a6f9c3aa0c9fd839191",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/tools/whisper_clock_recovery_test.py",
+      "published": "tests/whisper_clock_recovery_test.py",
+      "source_sha256": "c0b054733c5613c5ad008b278d8828fd8657de9c22cec71f6c49d82010b82659",
+      "published_sha256": "c0b054733c5613c5ad008b278d8828fd8657de9c22cec71f6c49d82010b82659",
+      "adjustments": [
+        "UTF-8 / LF normalization",
+        "test root follows the app/ directory"
+      ]
+    },
+    {
+      "source": "fix_stage/config/roast_pipeline.example.json",
+      "published": "app/config/roast_pipeline.example.json",
+      "source_sha256": "f697fff29c746b92d1740d42f7c1da3e9266dc697696a6379d1b21845a758a03",
+      "published_sha256": "d0a75403645545dbb6ac7e66966a6c39fb6890e229e108b387a27e320d1ab7e8",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/config/translation_style_prompt.txt",
+      "published": "app/config/translation_style_prompt.txt",
+      "source_sha256": "0db61e5b7bb8809015994584e8e09f7e38f7425ba55d4af77dc93b62e2e2aab8",
+      "published_sha256": "0db61e5b7bb8809015994584e8e09f7e38f7425ba55d4af77dc93b62e2e2aab8",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/config/translation_glossary.json",
+      "published": "app/config/translation_glossary.json",
+      "source_sha256": "2d2bc36adeb21fe0476ca622d37c496bc43a4ebf8a5469d2a8e8dc6efe6e0f18",
+      "published_sha256": "2d2bc36adeb21fe0476ca622d37c496bc43a4ebf8a5469d2a8e8dc6efe6e0f18",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/config/dict_pre.txt",
+      "published": "app/config/dict_pre.txt",
+      "source_sha256": "d802a0de3795434de4162fd8b3721cab234dc21169540fd11b4f39fafc5ea7a7",
+      "published_sha256": "d802a0de3795434de4162fd8b3721cab234dc21169540fd11b4f39fafc5ea7a7",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/config/dict_gpt.txt",
+      "published": "app/config/dict_gpt.txt",
+      "source_sha256": "a5ded2b38607aef1f643ab60add990b07c4a0ae553e1094a0eff0aa2bf8c756d",
+      "published_sha256": "a5ded2b38607aef1f643ab60add990b07c4a0ae553e1094a0eff0aa2bf8c756d",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    },
+    {
+      "source": "fix_stage/config/dict_after.txt",
+      "published": "app/config/dict_after.txt",
+      "source_sha256": "a4743733a0a240889cace820694b9c9334b933f56b3bd76a1c568970f07ca05d",
+      "published_sha256": "a4743733a0a240889cace820694b9c9334b933f56b3bd76a1c568970f07ca05d",
+      "adjustments": [
+        "UTF-8 / LF normalization"
+      ]
+    }
+  ],
+  "runtime_logic": "22 runtime modules retain identical Python AST; release_sync only excludes relocated tests from deployment",
+  "excluded": [
+    "private local configs",
+    "media",
+    "models",
+    "third-party executables",
+    "real jobs and subtitles",
+    "logs",
+    "backups",
+    "machine-specific handoffs"
+  ]
+}
