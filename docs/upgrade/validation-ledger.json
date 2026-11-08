@@ -1,0 +1,246 @@
+{
+  "schema_version": 2,
+  "record_kind": "validation_ledger",
+  "plan_section": "14.5",
+  "updated_at": "2026-11-08T12:20:18Z",
+  "entries": [
+    {
+      "test_id": "LEGACY-22-NOYAML",
+      "requirement_ids": [
+        "FR12",
+        "FR15"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {
+        "ffmpeg_exe_sha256": "2f14bb2fb8df3d54728fed45b5f6b84fce26e30b217e820e6e97fc5688b1a0d2"
+      },
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-08T12:06:38Z",
+      "status": "FAIL",
+      "evidence_paths": [
+        "LOCAL_WORKSPACE/roast-baseline-tests.log"
+      ],
+      "observed": "12 FAIL / 10 PASS；10 个因 No module named 'yaml'，1 个因 pywinauto，1 个连带",
+      "expected": "publication.md 记录 22/22（维护者环境已装 PyYAML）",
+      "remaining_limitations": "只证明干净 3.10 环境缺 PyYAML/pywinauto 时的行为；不是 v2 验收"
+    },
+    {
+      "test_id": "LEGACY-22",
+      "requirement_ids": [
+        "FR12",
+        "FR15"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {
+        "ffmpeg_exe_sha256": "2f14bb2fb8df3d54728fed45b5f6b84fce26e30b217e820e6e97fc5688b1a0d2"
+      },
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-08T12:11:07Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "LOCAL_WORKSPACE/roast-baseline-tests-venv.log",
+        "test-results/summary.json(不入库)"
+      ],
+      "observed": "22/22 PASS（隔离 venv：声明依赖 + PyYAML 6.0.3；FFmpeg gyan 2024-09-26）",
+      "expected": "22/22",
+      "remaining_limitations": "合成媒体与假引擎；不证明真实识别/翻译准确性"
+    },
+    {
+      "test_id": "T01",
+      "requirement_ids": [
+        "FR12",
+        "FR14",
+        "FR15"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "static",
+      "executed_at": null,
+      "status": "NOT_RUN",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "W01 实施后运行"
+    },
+    {
+      "test_id": "T02",
+      "requirement_ids": [
+        "FR06",
+        "FR09",
+        "FR15"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "fixture",
+      "executed_at": null,
+      "status": "NOT_RUN",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "W02 实施后运行"
+    },
+    {
+      "test_id": "T03",
+      "requirement_ids": [
+        "FR02",
+        "FR03",
+        "FR04",
+        "FR08",
+        "FR16"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "fixture",
+      "executed_at": null,
+      "status": "NOT_RUN",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "W03/W04/W06 实施后运行；v8 frozen evidence 需从旧测试夹具建立"
+    },
+    {
+      "test_id": "T04",
+      "requirement_ids": [
+        "FR03",
+        "FR07"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "real_http",
+      "executed_at": null,
+      "status": "NOT_RUN",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "W04 实施后运行；loopback 假模型"
+    },
+    {
+      "test_id": "T05",
+      "requirement_ids": [
+        "FR05",
+        "FR06",
+        "FR07",
+        "FR10",
+        "FR13"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "fixture",
+      "executed_at": null,
+      "status": "NOT_RUN",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "W05/W08 实施后运行"
+    },
+    {
+      "test_id": "T06",
+      "requirement_ids": [
+        "FR10",
+        "FR11"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "media_visual",
+      "executed_at": null,
+      "status": "NOT_RUN",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "W03/W07 实施后运行；需要 ffprobe（执行机缺失，B01）"
+    },
+    {
+      "test_id": "T07",
+      "requirement_ids": [
+        "FR01",
+        "FR02",
+        "FR03",
+        "FR04",
+        "FR06",
+        "FR08"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "real_engine",
+      "executed_at": null,
+      "status": "BLOCKED",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "执行机缺 D06 默认引擎与 S01/S02 素材（B01/B08）；W09 在维护者机器或资源到位后运行"
+    },
+    {
+      "test_id": "T08",
+      "requirement_ids": [
+        "FR05",
+        "FR11"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "editor_manual",
+      "executed_at": null,
+      "status": "BLOCKED",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "执行机未装 Subtitle Edit/Aegisub（B05）"
+    },
+    {
+      "test_id": "T09",
+      "requirement_ids": [
+        "FR12",
+        "FR13",
+        "FR14",
+        "FR15"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "packaging",
+      "executed_at": null,
+      "status": "BLOCKED",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "无 Python 3.13（B02）、无干净测试机（B09）"
+    },
+    {
+      "test_id": "W10-STATIC-19",
+      "requirement_ids": [
+        "FR14"
+      ],
+      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {},
+      "evidence_kind": "static",
+      "executed_at": null,
+      "status": "BLOCKED",
+      "evidence_paths": [],
+      "observed": "",
+      "expected": "",
+      "remaining_limitations": "主许可证待负责人决定（B10，见 license-options.md）；来源确认待负责人回答"
+    }
+  ]
+}
