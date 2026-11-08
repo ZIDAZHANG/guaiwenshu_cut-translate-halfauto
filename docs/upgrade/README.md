@@ -12,6 +12,9 @@
 | `source-origin-inventory.json` | 拟公开代码与依赖的来源/许可登记（第 19.4 节字段） | W00 |
 | `license-options.md` | 主许可证选择材料，交负责人决定（B10） | W00 |
 | `completion-W00.md` | W00 完成报告（第 17.2 节模板） | W00 |
+| `runtime-lock.json` | 主运行时选版（3.13.17）与依赖分组/锁状态（第 12.2 节） | W01 |
+| `requirements-lock-dev-3.10.txt` | 3.10 开发 venv 的 pip freeze（无哈希） | W01 |
+| `completion-W01.md` | W01 完成报告 | W01 |
 
 不入库的私有快照（`.gitignore` 排除 `*.private.json`）：`effective-config.private.json`、`resources-inventory.private.json`，保存执行机的实际绝对路径。
 

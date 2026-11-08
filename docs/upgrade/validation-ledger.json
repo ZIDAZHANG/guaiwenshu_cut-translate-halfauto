@@ -2,7 +2,7 @@
   "schema_version": 2,
   "record_kind": "validation_ledger",
   "plan_section": "14.5",
-  "updated_at": "2026-11-08T12:20:18Z",
+  "updated_at": "2026-11-08T12:39:58Z",
   "entries": [
     {
       "test_id": "LEGACY-22-NOYAML",
@@ -56,17 +56,22 @@
         "FR14",
         "FR15"
       ],
-      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "build_sha": "W01 working tree on top of b12e2b2 (see completion-W01.md for the commit)",
       "config_sha": null,
       "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
       "input_hashes": {},
-      "evidence_kind": "static",
-      "executed_at": null,
-      "status": "NOT_RUN",
-      "evidence_paths": [],
-      "observed": "",
-      "expected": "",
-      "remaining_limitations": "W01 实施后运行"
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-08T12:39:58Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_contracts_test.py",
+        "tests/upgrade_storage_config_test.py",
+        "tests/upgrade_resource_catalog_test.py",
+        "LOCAL_WORKSPACE/roast-w01-tests-summary.json"
+      ],
+      "observed": "3 个 T01 测试文件（29 个用例）PASS：3.10 venv 全套 25/25；同 3 个文件在未装任何第三方包的系统 3.10 下 PASS。覆盖：中文/空格/单引号/&/括号路径保持单 argv；NUL/保留名/不存在路径被拒；未知 schema 版本、未知根字段、NaN、BOM 被拒；缺资源报 RESOURCE_MISSING 并点名 id、未启动任何引擎；目录移动后 rebind 成功、内容变化报 RESOURCE_CHANGED；配置快照不随后续修改变化；v2 模块不导入 torch/paddle/qwen_asr/pywinauto/tkinter/yaml；CLI --help 与 init/register/inspect/migrate 退出码契约",
+      "expected": "计划 14.3 T01 列举项全部通过",
+      "remaining_limitations": "3.13 解释器未安装（B02）：'3.13 依赖导入/CLI 帮助可运行' 只在 3.10 验证；真实引擎探针只用 python -V 代替（ffmpeg/whisper/llama 探针逻辑按输出关键字实现，待 W03/W09 在真实二进制上确认）"
     },
     {
       "test_id": "T02",
@@ -223,7 +228,7 @@
       "evidence_paths": [],
       "observed": "",
       "expected": "",
-      "remaining_limitations": "无 Python 3.13（B02）、无干净测试机（B09）"
+      "remaining_limitations": "无 Python 3.13（B02）、无干净测试机（B09）；build/roast-onedir.spec 已写但 NOT_RUN"
     },
     {
       "test_id": "W10-STATIC-19",

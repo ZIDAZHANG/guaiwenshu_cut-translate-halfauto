@@ -53,6 +53,19 @@ D01–D20、FR01–FR16、QC01–QC23、W00–W10、T01–T09、B01–B11 全部
 | 编辑器 | 授权安装 Subtitle Edit 与 Aegisub 指定版本 | B05 |
 | 干净测试机 | 提供 | B09 |
 
+## 5a. W01 记录（2026-11-08）
+
+| 编号 | 决定/事实 | 依据 |
+| --- | --- | --- |
+| RT-01 | 主运行时选定 **CPython 3.13.17**（2026-10-21，最后一个带 Windows x64 安装包的 3.13 版本；3.13.18 起只有源码）。安装包 URL、python.org 公布的 SHA-256、Sigstore/签名地址记录在 `runtime-lock.json`；**尚未下载安装**，需负责人授权（B02） | 计划 12.2 选版规则；python.org 发布页 |
+| RT-02 | 依赖分三组锁：核心（PyYAML 6.0.3、yt-dlp 2026.7.4）、legacy（pywinauto、pywin32、Pillow）、dev（imageio-ffmpeg）；`requirements.txt` 仍等于全量安装以兼容旧文档。3.13 带哈希的 transitive lock 因无 3.13 解释器 BLOCKED；3.10 开发 venv 的 freeze 记录在 `requirements-lock-dev-3.10.txt` | 计划 12.2 |
+| IF-01 | `app/tools/upgrade/` 新增 contracts / config / storage / resource_catalog / cli；39 种记录类型 + 资源声明文件 3 种，全部导出到 `schemas/`（`scripts/export_schemas.py --check` 可验证一致） | 计划第 5、6 节 |
+| IF-02 | 引擎参数（翻译/识别/OCR/媒体/下载）保存在 `settings/engine.json`，与 `settings/app.json`（AppConfig）分开；两者一起进入 ConfigSnapshot | AppConfig 契约字段固定，ConfigSnapshot 单列 `engine_settings` |
+| IF-03 | 资源声明文件 `settings/resources.local.json`：`resource_id → {kind, absolute_path, files, expected_content_sha256, …}`。首次 `register` 冻结内容身份；路径变化且内容相同只改绑定；内容变化报 RESOURCE_CHANGED 且 resolve 拒绝 | 计划 4.2、10.3 |
+| IF-04 | 能力探针只执行版本/帮助参数（ffmpeg `-version`、whisper `--help`、llama-server `--version`），未探到的能力保持 `unknown`，不适用为 `not_applicable` | 计划 6.2、W01 任务 |
+| CO-CAND-001 | CLI 比第 12.1 节清单多了 `config init`、`config migrate`、`resources register`、`resources rebind` 四条命令。它们是第 3.4/4.2/9.6 节已规定行为（首次选数据根、旧配置迁移、资源登记/重新定位）的命令行表达，不新增产品行为；按 0.2 节格式登记为变更单候选，请负责人确认是否纳入 12.1 清单 | 计划 0.2、12.1 |
+| EV-01 | 旧 22 测试 + 新 3 个 T01 测试在 3.10 venv 全部通过；3 个 T01 测试在**未装任何第三方包**的系统 3.10 下也通过（v2 核心不依赖 PyYAML/pywin32） | `validation-ledger.json` T01 |
+
 ## 6. 不做的事（W00 重申）
 
 不删除 VoiceTransl/剪映相关源码，不为商用换模型，不更新全局 Python，不重写分段算法，不下载模型，不修改 D 盘旧目录、原媒体、旧词典，不在用户文档目录写入任何文件。
