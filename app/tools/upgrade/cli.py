@@ -45,7 +45,7 @@ def cmd_config_init(args: argparse.Namespace) -> int:
     report = init_data_root(args.data_root)
     app_config = cfg.default_app_config(report["data_root"], ascii_temp_root=args.ascii_temp_root)
     ensure_ascii_root(app_config["ascii_temp_root"])
-    config_path = Path(args.config)
+    config_path = Path(args.config) if args.config else Path(report["data_root"]) / cfg.APP_CONFIG_NAME
     if config_path.exists() and not args.force:
         raise ContractError("OUTPUT_EXISTS", "config file already exists; pass --force to replace it", details={"path": str(config_path)})
     cfg.save_app_config(config_path, app_config)
@@ -121,6 +121,122 @@ def cmd_resources_rebind(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+# --------------------------------------------------------------------------- queue (W02)
+
+def _data_root_config(data_root: str) -> dict:
+    from upgrade.config import APP_CONFIG_NAME, load_app_config
+    return load_app_config(Path(data_root) / APP_CONFIG_NAME)
+
+
+def _engine_settings_for(config: dict) -> dict:
+    from upgrade.config import ENGINE_SETTINGS_NAME, load_engine_settings, resolve_in_data_root
+    return load_engine_settings(resolve_in_data_root(config, ENGINE_SETTINGS_NAME))
+
+
+def _resource_refs_for(config: dict) -> list[dict]:
+    from upgrade.resource_catalog import inspect_resources, resolve_resource
+    report = inspect_resources(config, probe=False)
+    return [resolve_resource(resource_id, report)["resource_ref"] for resource_id in sorted(report["manifests"])
+            if report["manifests"][resource_id].get("extensions", {}).get("identity") != "changed"]
+
+
+def _parse_stream(value: str | None) -> int | None:
+    if value is None or value == "none":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ContractError("NEEDS_SELECTION", f"stream index must be an integer or 'none', got {value!r}") from exc
+
+
+def cmd_submit(args: argparse.Namespace) -> int:
+    from upgrade.runner import build_job_request, submit
+    config = _load_config(args.config)
+    engine = _engine_settings_for(config)
+    if args.mode == "supplied_source":
+        if not (args.project and args.source_revision):
+            raise ContractError("NEEDS_SELECTION", "supplied_source needs --project ID and --source-revision ID")
+    elif args.source_revision:
+        raise ContractError("NEEDS_SELECTION", "--source-revision is only valid with --mode supplied_source")
+    if args.timing_mode and args.mode != "combined":
+        raise ContractError("NEEDS_SELECTION", "--timing-mode only applies to --mode combined (speech_only=speech, visual_only=screen are fixed)")
+    if args.video:
+        video = Path(args.video)
+        if not video.is_file():
+            raise ContractError("INPUT_MISSING", f"video file not found: {video}", details={"path": str(video)})
+        input_kind, input_value, default_name = "local_video", str(video.resolve()), video.stem
+    elif args.url:
+        input_kind, input_value, default_name = "url", args.url, args.url
+    else:
+        if args.mode != "supplied_source":
+            raise ContractError("NEEDS_SELECTION", "give --video FILE or --url URL")
+        input_kind, input_value, default_name = "local_video", "supplied-source", args.project
+    request = build_job_request(
+        config, engine, input_kind=input_kind, input_value=input_value, recognition_mode=args.mode, timing_mode=args.timing_mode,
+        project_id=args.project, video_stream_index=_parse_stream(args.video_stream), audio_stream_index=_parse_stream(args.audio_stream),
+        source_revision_id=args.source_revision, dictionary_revision_id="none", resource_refs=_resource_refs_for(config),
+        accepted_dictionary_warnings=["accepted"] if args.accept_dictionary_warnings else [],
+    )
+    if args.audio_stream == "none":
+        request["extensions"]["audio_stream"] = "none"
+    if args.copy_original:
+        request["extensions"]["copy_original"] = True
+    envelope = submit(config["data_root"], request, display_name=args.display_name or default_name)
+    _emit(_result("submit", ok=True, ids={"project_id": request["project_id"], "request_id": request["request_id"], "status": envelope["status"],
+                                           "duplicate": envelope["request"]["request_id"] == request["request_id"] and envelope["created_at"] != request["created_at"]}))
+    return EXIT_OK
+
+
+def cmd_queue_run(args: argparse.Namespace) -> int:
+    from upgrade.runner import QueueRunner
+    from upgrade.stage_registry import default_registry
+    config = _data_root_config(args.data_root)
+    runner = QueueRunner(config["data_root"], config, _engine_settings_for(config), default_registry(), event_sink=lambda e: _log(json.dumps(e, ensure_ascii=False)))
+    summary = runner.run_queue(continue_on_error=None if args.continue_on_error is None else args.continue_on_error)
+    _emit(_result("queue.run", ok=True, ids=summary))
+    return EXIT_OK
+
+
+def cmd_queue_cancel(args: argparse.Namespace) -> int:
+    from upgrade.runner import cancel
+    config = _data_root_config(args.data_root)
+    envelope = cancel(config["data_root"], args.request)
+    _emit(_result("queue.cancel", ok=True, ids={"request_id": args.request, "status": envelope["status"]}))
+    return EXIT_OK
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    from upgrade.runner import resume
+    config = _data_root_config(args.data_root)
+    envelope = resume(config["data_root"], args.run)
+    _emit(_result("resume", ok=True, ids={"run_id": args.run, "request_id": envelope["request"]["request_id"], "status": envelope["status"]}))
+    return EXIT_OK
+
+
+def cmd_inbox_intake(args: argparse.Namespace) -> int:
+    from upgrade.inbox import intake
+    from upgrade.runner import build_job_request
+    config = _load_config(args.config)
+    engine = _engine_settings_for(config)
+    refs = _resource_refs_for(config)
+
+    def factory(parsed: dict, source: Path) -> dict:
+        url = str(parsed.get("url", "")).strip()
+        video = str(parsed.get("video_file", parsed.get("video", ""))).strip()
+        if not url and not video:
+            raise ContractError("INPUT_MISSING", "legacy request has neither url nor video_file", details={"source": str(source)})
+        mode = str(parsed.get("mode", "")).strip() or config["defaults"]["recognition_mode"]
+        timing = str(parsed.get("timing_mode", "")).strip() or None
+        return build_job_request(config, engine, input_kind="url" if url else "local_video", input_value=url or video, recognition_mode=mode,
+                                 timing_mode=timing if mode == "combined" else None, dictionary_revision_id="none", resource_refs=refs)
+
+    rows = intake(config["data_root"], args.inbox, factory, event_sink=lambda e: _log(json.dumps(e, ensure_ascii=False)))
+    failed = [row for row in rows if row["action"] == "failed"]
+    _emit(_result("inbox.intake", ok=not failed, ids={"rows": rows},
+                  error=ContractError("SCHEMA_INVALID", f"{len(failed)} inbox file(s) could not be ingested", details={"failed": failed}) if failed else None))
+    return EXIT_OK if not failed else EXIT_DATA
+
+
 # --------------------------------------------------------------------------- parser
 
 def build_parser() -> argparse.ArgumentParser:
@@ -131,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_sub = config_parser.add_subparsers(dest="command", required=True)
     init = config_sub.add_parser("init", help="创建 DATA_ROOT 布局并写出默认 AppConfig（首次显式选择数据根）")
     init.add_argument("--data-root", required=True)
-    init.add_argument("--config", required=True, help="AppConfig JSON 输出路径")
+    init.add_argument("--config", default=None, help="AppConfig JSON 输出路径；默认 <data-root>/settings/app.json")
     init.add_argument("--ascii-temp-root", default=None)
     init.add_argument("--force", action="store_true")
     init.set_defaults(func=cmd_config_init)
@@ -168,6 +284,46 @@ def build_parser() -> argparse.ArgumentParser:
     rebind.add_argument("--id", required=True)
     rebind.add_argument("--path", required=True)
     rebind.set_defaults(func=cmd_resources_rebind)
+
+    submit_parser = sub.add_parser("submit", help="持久化一个任务请求（不自动开始推理）")
+    source_group = submit_parser.add_mutually_exclusive_group()
+    source_group.add_argument("--video", default=None)
+    source_group.add_argument("--url", default=None)
+    submit_parser.add_argument("--config", required=True)
+    submit_parser.add_argument("--mode", required=True, choices=("combined", "speech_only", "visual_only", "supplied_source"))
+    submit_parser.add_argument("--timing-mode", default=None, choices=("mixed", "screen", "speech"))
+    submit_parser.add_argument("--project", default=None, help="已有项目 ID；不给则新建项目")
+    submit_parser.add_argument("--source-revision", default=None, help="supplied_source 模式的源字幕版本 ID")
+    submit_parser.add_argument("--video-stream", default=None, help="视频流序号；单一合法流可省略")
+    submit_parser.add_argument("--audio-stream", default=None, help="音频流序号或 none")
+    submit_parser.add_argument("--copy-original", action="store_true")
+    submit_parser.add_argument("--accept-dictionary-warnings", action="store_true")
+    submit_parser.add_argument("--display-name", default=None)
+    submit_parser.set_defaults(func=cmd_submit, command="request")
+
+    queue_parser = sub.add_parser("queue", help="队列执行与取消")
+    queue_sub = queue_parser.add_subparsers(dest="command", required=True)
+    queue_run = queue_sub.add_parser("run", help="取得执行锁后按顺序处理 QUEUED 请求，队列耗尽即退出")
+    queue_run.add_argument("--data-root", required=True)
+    queue_run.add_argument("--continue-on-error", dest="continue_on_error", action="store_true", default=None)
+    queue_run.add_argument("--stop-on-error", dest="continue_on_error", action="store_false")
+    queue_run.set_defaults(func=cmd_queue_run)
+    queue_cancel = queue_sub.add_parser("cancel", help="取消未开始请求，或请求执行器停止正在运行的请求")
+    queue_cancel.add_argument("--data-root", required=True)
+    queue_cancel.add_argument("--request", required=True)
+    queue_cancel.set_defaults(func=cmd_queue_cancel)
+
+    resume_parser = sub.add_parser("resume", help="把失败/中断的运行重新排回队列（保留原配置，新增 attempt）")
+    resume_parser.add_argument("--data-root", required=True)
+    resume_parser.add_argument("--run", required=True)
+    resume_parser.set_defaults(func=cmd_resume, command="run")
+
+    inbox_parser = sub.add_parser("inbox", help="旧收件箱接管")
+    inbox_sub = inbox_parser.add_subparsers(dest="command", required=True)
+    inbox_intake = inbox_sub.add_parser("intake", help="把旧 inbox 的 pending/working 请求入库到 v2 队列（内容哈希去重）")
+    inbox_intake.add_argument("--config", required=True)
+    inbox_intake.add_argument("--inbox", required=True)
+    inbox_intake.set_defaults(func=cmd_inbox_intake)
     return parser
 
 
@@ -177,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return EXIT_ARGS if exc.code not in (0, None) else EXIT_OK
-    operation = f"{args.group}.{args.command}"
+    operation = f"{args.group}.{getattr(args, 'command', 'run')}"
     try:
         return int(args.func(args))
     except ContractError as exc:

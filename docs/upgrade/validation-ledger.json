@@ -2,7 +2,7 @@
   "schema_version": 2,
   "record_kind": "validation_ledger",
   "plan_section": "14.5",
-  "updated_at": "2026-11-08T12:39:58Z",
+  "updated_at": "2026-11-08T12:57:19Z",
   "entries": [
     {
       "test_id": "LEGACY-22-NOYAML",
@@ -80,17 +80,21 @@
         "FR09",
         "FR15"
       ],
-      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "build_sha": "W02 working tree on top of 1d7e2fb (see completion-W02.md for the commit)",
       "config_sha": null,
       "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
       "input_hashes": {},
       "evidence_kind": "fixture",
-      "executed_at": null,
-      "status": "NOT_RUN",
-      "evidence_paths": [],
-      "observed": "",
-      "expected": "",
-      "remaining_limitations": "W02 实施后运行"
+      "executed_at": "2026-11-08T12:57:19Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_process_runner_test.py",
+        "tests/upgrade_runner_test.py",
+        "LOCAL_WORKSPACE/roast-w02-tests-summary.json"
+      ],
+      "observed": "2 个 T02 测试文件（20 个用例）PASS，3.10 venv 全套 27/27。覆盖：双执行器只有一个能写（进程内 + 跨进程退出码 7）；入队即持久化、同 request_id 幂等；取消未开始请求保留 JSON 且不执行；阶段失败保留 .pending 候选、不变 DONE，resume 增加 attempt 且已提交上游阶段不重跑；实现异常记为 STAGE_FAILED；无实现阶段记 STAGE_UNAVAILABLE；相同签名命中已提交 manifest（校验后复用，调用次数不增）；参数变化后下游重算；崩溃恢复：RUNNING→INTERRUPTED、从已提交 manifest 重建指针并不重跑；执行器存活时 recover 不动数据；运行中取消终止自有子进程树（Job Object）、无关进程存活、无 DONE 产生、cancel 标记清理；已提交人工文件字节在运行/失败后不变；旧 inbox pending/working 接管、内容哈希去重、不可解析文件原地保留；CLI submit/queue run/resume/queue cancel 契约与退出码",
+      "expected": "计划 14.3 T02 列举项全部通过",
+      "remaining_limitations": "合成阶段与 python 子进程代替真实引擎；CTRL_BREAK 优雅退出请求对无控制台子进程无效，依赖 3 秒宽限后的 Job Object 终止；跨机器/网络盘不在范围"
     },
     {
       "test_id": "T03",

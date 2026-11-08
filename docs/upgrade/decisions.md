@@ -66,6 +66,18 @@ D01–D20、FR01–FR16、QC01–QC23、W00–W10、T01–T09、B01–B11 全部
 | CO-CAND-001 | CLI 比第 12.1 节清单多了 `config init`、`config migrate`、`resources register`、`resources rebind` 四条命令。它们是第 3.4/4.2/9.6 节已规定行为（首次选数据根、旧配置迁移、资源登记/重新定位）的命令行表达，不新增产品行为；按 0.2 节格式登记为变更单候选，请负责人确认是否纳入 12.1 清单 | 计划 0.2、12.1 |
 | EV-01 | 旧 22 测试 + 新 3 个 T01 测试在 3.10 venv 全部通过；3 个 T01 测试在**未装任何第三方包**的系统 3.10 下也通过（v2 核心不依赖 PyYAML/pywin32） | `validation-ledger.json` T01 |
 
+## 5b. W02 记录（2026-11-08）
+
+| 编号 | 决定/事实 | 依据 |
+| --- | --- | --- |
+| IF-05 | 错误码表新增 `STAGE_FAILED`（阶段实现抛出异常）与 `STAGE_UNAVAILABLE`（本构建没有该阶段实现）。10.4 的集合是"最低集合"，新增两码只用于诚实标注实施进度，不改变已有码含义 | 计划 10.4 |
+| IF-06 | 阶段实现通过 `upgrade/stage_registry.py` 注册；W02 的默认注册表为空，真实请求在 INPUT 处以 STAGE_UNAVAILABLE 失败并可 resume。不放占位实现、不模拟成功 | 计划 0.1"范围外不以后续完善包装成已完成" |
+| IF-07 | 取消正在运行的请求用 `queue/cancel/<request_id>` 标记文件通知执行器（GUI 只写文件、不碰 PID）；处理后删除标记并在 envelope.last_error 记 PROCESS_CANCELLED | 计划 10.2/10.5"GUI 不直接控制外部任意 PID" |
+| IF-08 | task.json 中指向阶段 manifest 的 ArtifactRef 路径以**项目目录**为基准（`runs/<run>/stages/<stage>/<attempt>/manifest.json`），这样同一项目内跨 run 复用已提交阶段不需要 `..` | 计划 4.3 托管路径规则 + 10.3 复用 |
+| IF-09 | 子进程优雅退出请求在 Windows 用 CTRL_BREAK；无控制台的引擎收不到时，3 秒宽限后由 Job Object（KILL_ON_JOB_CLOSE）终止整个所有权范围；没有 Job Object 时退回旧 `terminate_process_tree`（Toolhelp 快照），绝不按进程名杀 | 计划 10.5 |
+| CO-CAND-002 | CLI 再增 `inbox intake --config --inbox`（旧收件箱接管入口）；`config init` 的 `--config` 改为可选，默认写 `<data-root>/settings/app.json`，使 `queue run --data-root` 等 12.1 命令能按 4.2 布局找到配置 | 计划 10.2 inbox 兼容、12.1 |
+| EV-02 | T02 20 用例 PASS；全套 27/27（3.10 venv） | `validation-ledger.json` T02 |
+
 ## 6. 不做的事（W00 重申）
 
 不删除 VoiceTransl/剪映相关源码，不为商用换模型，不更新全局 Python，不重写分段算法，不下载模型，不修改 D 盘旧目录、原媒体、旧词典，不在用户文档目录写入任何文件。

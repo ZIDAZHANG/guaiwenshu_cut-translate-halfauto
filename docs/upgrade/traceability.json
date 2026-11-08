@@ -279,7 +279,8 @@
       "verification": [
         "T02"
       ],
-      "status": "NOT_STARTED"
+      "status": "COMPLETED",
+      "completion_record": "docs/upgrade/completion-W02.md"
     },
     "W03": {
       "title": "媒体坐标与两类识别接入",
