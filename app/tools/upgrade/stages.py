@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Stage implementations of work package W03: INPUT, MEDIA_PREP, OCR and ASR (plan 1.1, section 10.1).
+"""Stage implementations (plan 1.1, section 10.1): INPUT, MEDIA_PREP, OCR, ASR (W03) and SOURCE, TRANSLATION,
+SUBTITLE_BUILD, QUALITY_AND_COMMIT (W04).
 
 Each stage declares the dependencies that decide its cache signature (plan 10.3) and writes its outputs into the
 attempt directory handed over by the runner. Settings are read from the configuration snapshot frozen in the
@@ -7,27 +8,34 @@ request; only the local resource bindings (paths) come from the current ``resour
 identity is checked against the references frozen at submit time.
 
 A missing or changed tool is reported before any engine starts (RESOURCE_MISSING / RESOURCE_CHANGED) and names
-every affected role.
+every affected role, the translation server included.
 """
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from upgrade import media, recognition
-from upgrade.contracts import ContractError, new_id, parse_json_text, require_record
+from upgrade import media, recognition, source as source_module, subtitles, translation
+from upgrade.contracts import SCHEMA_VERSION, ContractError, load_record, new_id, parse_json_text, require_record, sha256_file, sha256_text, utc_now
 from upgrade.resource_catalog import inspect_resources, resolve_resource
-from upgrade.runner import StageContext, update_project
-from upgrade.storage import atomic_write_text, render_json
+from upgrade.runner import StageContext, stage_signature, update_project
+from upgrade.storage import MANIFEST_NAME, artifact_ref, atomic_write_bytes, atomic_write_text, begin_pending, commit_pending, read_manifest, render_json, safe_join, verify_committed
 
 ROLE_DEFAULT_IDS = {"ffprobe": "ffprobe", "ffmpeg": "ffmpeg", "asr_engine": "whisper-cli", "asr_model": "whisper-model",
-                    "vad_model": "whisper-vad-model", "ocr_engine": "magia-timeline"}
-ROLE_KINDS = {"ffprobe": "ffprobe", "ffmpeg": "ffmpeg", "asr_engine": "asr_engine", "asr_model": "model", "vad_model": "model", "ocr_engine": "ocr_engine"}
+                    "vad_model": "whisper-vad-model", "ocr_engine": "magia-timeline", "translation_engine": "llama-server", "translation_model": "sakura-model"}
+ROLE_KINDS = {"ffprobe": "ffprobe", "ffmpeg": "ffmpeg", "asr_engine": "asr_engine", "asr_model": "model", "vad_model": "model", "ocr_engine": "ocr_engine",
+              "translation_engine": "translation_engine", "translation_model": "model"}
+TRANSLATION_ROLES = ("translation_engine", "translation_model")
 FULL_FRAME_ROI = {"left": 0.0, "top": 0.0, "right": 1.0, "bottom": 1.0}
 SPEECH_MODES = ("combined", "speech_only")
 VISUAL_MODES = ("combined", "visual_only")
+MACHINE_SRT_NAME = "machine.zh.srt"
+MACHINE_ASS_NAME = "machine.zh.ass"
+QUALITY_GATE_VERSION = 1
+GATE_RULES = ("QC01_PARSE", "QC02_TIME", "QC03_BOUNDS", "QC04_IDENTITY", "QC05_COVERAGE", "QC06_ORDER", "QC17_TRANSLATION", "QC23_EMPTY")
 
 
 # --------------------------------------------------------------------------- settings and resources
@@ -43,7 +51,7 @@ def _section(settings: dict, name: str) -> dict:
 
 
 def roles_for(request: dict) -> list[str]:
-    """Every tool/model role this request needs before it reaches the SOURCE stage."""
+    """Every tool/model role this request needs, recognition and translation included (checked once at INPUT)."""
     mode = request["recognition_mode"]
     roles = ["ffprobe", "ffmpeg"]
     if mode in VISUAL_MODES:
@@ -52,6 +60,7 @@ def roles_for(request: dict) -> list[str]:
         roles += ["asr_engine", "asr_model"]
         if bool(_section(frozen_settings(request), "recognition").get("vad", True)):
             roles.append("vad_model")
+    roles += list(TRANSLATION_ROLES)
     return roles
 
 
@@ -148,12 +157,12 @@ class InputStage:
         request = ctx.request
         roles = _roles(ctx, roles_for(request))  # complete pre-check: nothing long starts with a missing engine
         runtime = _media_runtime(ctx, roles)
-        job_input = request["input"]
-        if (request["recognition_mode"] == "supplied_source" and not job_input["source_media_id"] and job_input["kind"] == "local_video"
-                and not Path(job_input["value"]).is_file()):
-            raise ContractError("INPUT_MISSING", "this supplied_source request names no media file; give the video with the request "
-                                "(media taken from a registered source revision is not available in this build)",
-                                details={"source_revision_id": request["source_revision_id"], "input": job_input["value"]})
+        job_input = dict(request["input"])
+        if request["recognition_mode"] == "supplied_source":
+            # the source revision must exist before anything runs; without a video file the run uses the media it is bound to
+            loaded = source_module.load_source_revision(ctx.project_dir, request["source_revision_id"])
+            if not job_input["source_media_id"] and (job_input["kind"] != "local_video" or not Path(job_input["value"]).is_file()):
+                job_input["source_media_id"] = loaded["record"]["media_id"]
         extensions: dict[str, Any] = {}
         if _audio_none(request):
             extensions["audio_stream"] = "none"
@@ -283,6 +292,368 @@ class AsrStage:
         return {"ok": True, "evidence_id": evidence["evidence_id"], "parents": len(evidence["parents"]), "words": len(evidence["word_times"]),
                 "word_timing_status": evidence["extensions"]["word_timing_status"], "selected_attempt": evidence["extensions"]["selected_attempt"],
                 "empty": evidence["extensions"]["asr_empty"], "issue_codes": [issue["code"] for issue in result["issues"]]}
+
+
+# --------------------------------------------------------------------------- SOURCE (W04)
+
+def _stage_output_ref(ctx: StageContext, stage: str, name: str) -> dict:
+    """Project-relative ArtifactRef (with the manifest's hash) of one committed upstream output."""
+    manifest = ctx.outputs[stage]["manifest"]
+    ref = next((item for item in manifest["outputs"] if item["path"] == name), None)
+    if ref is None:
+        raise ContractError("STAGE_FAILED", f"stage {stage} has no output {name}", details={"stage": stage, "name": name})
+    relative = (ctx.output_dir(stage) / name).relative_to(ctx.project_dir).as_posix()
+    return require_record("ArtifactRef", {**ref, "path": relative})
+
+
+def _optional_output(ctx: StageContext, stage: str, name: str) -> dict | None:
+    stage_record = next(item for item in ctx.task["stages"] if item["name"] == stage)
+    if stage_record["status"] != "DONE" or stage not in ctx.outputs:
+        return None
+    return _stage_output_ref(ctx, stage, name)
+
+
+class SourceStage:
+    """Source record for the run: v8 segmentation over the recognition evidence (machine origin) or the registered
+    source revision named by a supplied_source request. Commits a SourceRevision once; writes a pointer into the attempt."""
+    name = "SOURCE"
+
+    def signature_inputs(self, ctx: StageContext) -> dict:
+        request = ctx.request
+        mode = request["recognition_mode"]
+        record = _read_json(ctx.output_dir("MEDIA_PREP") / "media_record.json")
+        if mode == "supplied_source":
+            loaded = source_module.load_source_revision(ctx.project_dir, request["source_revision_id"])
+            return {"mode": mode, "media_id": record["media_id"], "source_revision_id": request["source_revision_id"],
+                    "source_manifest_sha256": sha256_file(loaded["dir"] / MANIFEST_NAME), "adapter_version": source_module.SOURCE_ADAPTER_VERSION}
+        speech = _optional_output(ctx, "ASR", "speech_evidence.json")
+        visual = _optional_output(ctx, "OCR", "visual_evidence.json")
+        from subtitle_segments import SEGMENTATION_VERSION
+        return {"mode": mode, "timing_mode": request["timing_mode"] if mode == "combined" else None, "media_id": record["media_id"], "duration_ms": record["duration_ms"],
+                "speech_sha256": speech["sha256"] if speech else None, "visual_sha256": visual["sha256"] if visual else None,
+                "segmentation_version": SEGMENTATION_VERSION, "adapter_version": source_module.SOURCE_ADAPTER_VERSION}
+
+    def run(self, ctx: StageContext) -> dict:
+        request = ctx.request
+        mode = request["recognition_mode"]
+        record = _read_json(ctx.output_dir("MEDIA_PREP") / "media_record.json")
+        if mode == "supplied_source":
+            loaded = source_module.load_source_revision(ctx.project_dir, request["source_revision_id"])
+            if loaded["record"]["media_id"] != record["media_id"]:
+                raise ContractError("MEDIA_CHANGED", "the source revision is bound to another media than this request; register the right media or revision",
+                                    details={"source_media_id": loaded["record"]["media_id"], "request_media_id": record["media_id"], "rule_id": "QC21_MEDIA_BINDING"})
+            beyond = source_module.check_bounds(loaded["segment_set"]["segments"], record["duration_ms"])
+            if beyond:
+                raise ContractError("SUBTITLE_INVALID", f"{len(beyond)} cue(s) of the supplied source end after the media (QC03_BOUNDS)",
+                                    details={"kind": "bounds", "rule_id": "QC03_BOUNDS", "cues": beyond})
+            reused = True
+        else:
+            sig = stage_signature(self.name, request, self.signature_inputs(ctx))
+            loaded = source_module.find_source_revision(ctx.project_dir, stage_signature=sig)
+            reused = loaded is not None
+            if loaded is None:
+                speech = _read_json(ctx.output_dir("ASR") / "speech_evidence.json") if _optional_output(ctx, "ASR", "speech_evidence.json") else None
+                visual = _read_json(ctx.output_dir("OCR") / "visual_evidence.json") if _optional_output(ctx, "OCR", "visual_evidence.json") else None
+                built = source_module.build_source(recognition_mode=mode, timing_mode=request["timing_mode"], speech_evidence=speech, visual_evidence=visual,
+                                                   duration_ms=record["duration_ms"])
+                timeline_ref = _optional_output(ctx, "OCR", "ocr/timeline.utf8.ass")
+                evidence_refs = {"speech": _optional_output(ctx, "ASR", "speech_evidence.json"), "visual": _optional_output(ctx, "OCR", "visual_evidence.json"),
+                                 "timeline": timeline_ref, "media_prep": ctx.task["stages"][1]["output_manifest"]}
+                loaded = source_module.commit_source_revision(project_dir=ctx.project_dir, project_id=request["project_id"], media_id=record["media_id"], run_id=ctx.task["run_id"],
+                                                              stage_signature=sig, recognition_mode=mode, timing_mode=request["timing_mode"], built=built,
+                                                              speech_evidence=speech, visual_evidence=visual, evidence_refs=evidence_refs,
+                                                              timeline_ass=safe_join(ctx.project_dir, timeline_ref["path"]).read_bytes() if timeline_ref else None)
+                revision_id = loaded["record"]["revision_id"]
+                update_project(ctx.data_root, request["project_id"],
+                               lambda project: project["source_revision_ids"].append(revision_id) if revision_id not in project["source_revision_ids"] else None)
+                ctx.emit({"event": "source_revision_committed", "revision_id": revision_id, "segments": len(loaded["segment_set"]["segments"]), "status": loaded["segment_set"]["status"]})
+        revision = loaded["record"]
+        segment_set = loaded["segment_set"]
+        pointer = {"schema_version": SCHEMA_VERSION, "source_revision_id": revision["revision_id"], "origin": revision["origin"], "status": segment_set["status"],
+                   "segment_count": len(segment_set["segments"]), "media_id": revision["media_id"], "reused_existing_revision": reused,
+                   "manifest_ref": artifact_ref(ctx.project_dir, loaded["dir"] / MANIFEST_NAME), "segments_ref": loaded["segments_ref"],
+                   "source_subtitle_ref": {**revision["source_subtitle_ref"], "path": f"revisions/source/{revision['revision_id']}/{revision['source_subtitle_ref']['path']}"}}
+        atomic_write_text(ctx.attempt_dir / "source_ref.json", render_json(pointer))
+        return {"ok": True, "source_revision_id": revision["revision_id"], "origin": revision["origin"], "status": segment_set["status"], "segments": len(segment_set["segments"]),
+                "needs_review": segment_set["extensions"].get("needs_review"), "coverage": segment_set["coverage"]["status"], "reused_existing_revision": reused}
+
+
+# --------------------------------------------------------------------------- TRANSLATION (W04)
+
+def _source_pointer(ctx: StageContext) -> dict:
+    return _read_json(ctx.output_dir("SOURCE") / "source_ref.json")
+
+
+def _translation_settings(request: dict) -> dict:
+    return _section(frozen_settings(request), "translation")
+
+
+class TranslationStage:
+    """Sakura translation of the source revision through the owned llama-server (translation.translate)."""
+    name = "TRANSLATION"
+
+    def signature_inputs(self, ctx: StageContext) -> dict:
+        pointer = _source_pointer(ctx)
+        roles = _roles(ctx, list(TRANSLATION_ROLES))
+        params = translation.effective_parameters(_translation_settings(ctx.request))
+        snapshot = ctx.request["config_snapshot"]
+        return {"segments_sha256": pointer["segments_ref"]["sha256"], "source_revision_id": pointer["source_revision_id"],
+                "dictionary_revision_id": snapshot["dictionary_revision_id"], "accepted_dictionary_warnings": sorted(snapshot["accepted_dictionary_warnings"]),
+                "parameters": {key: params[key] for key in ("batch_size", "context_size", "gpu_layers", "temperature", "top_p", "use_native_dictionaries", "native_prompt_mode")},
+                "engine": _identity(roles["translation_engine"]), "model": _identity(roles["translation_model"]),
+                "adapter_version": translation.TRANSLATION_ADAPTER_VERSION, "protocol": translation.PROTOCOL_ID}
+
+    def run(self, ctx: StageContext) -> dict:
+        pointer = _source_pointer(ctx)
+        roles = _roles(ctx, list(TRANSLATION_ROLES))
+        request = require_record("TranslationRequest", {
+            "run_id": ctx.task["run_id"], "source_revision_id": pointer["source_revision_id"], "segments_ref": pointer["segments_ref"],
+            "config_snapshot": ctx.request["config_snapshot"], "checkpoint_dir": str(ctx.run_dir / "checkpoints" / "translation")})
+        runtime = translation.TranslationRuntime(project_dir=ctx.project_dir, data_root=ctx.data_root, output_dir=ctx.attempt_dir, resources=roles, owner_token=ctx.owner_token,
+                                                 cancel=ctx.cancel, emit=ctx.emit, capability_id=str(ctx.request["config_snapshot"]["app_config"]["defaults"]["gpu_profile"]))
+        result = translation.translate(request, runtime=runtime)
+        atomic_write_text(ctx.attempt_dir / "translation_request.json", render_json(request))
+        atomic_write_text(ctx.attempt_dir / "translation_result.json", render_json({"issues": result["issues"], "raw_exchanges": len(result["raw_exchange_refs"])}))
+        translations = _read_json(ctx.attempt_dir / result["translations_ref"]["path"])
+        return {"ok": True, "source_revision_id": pointer["source_revision_id"], "status": translations["status"], "records": len(translations["records"]),
+                "requests": translations["extensions"]["stats"]["requests"], "resumed_cues": translations["extensions"]["stats"]["resumed_cues"],
+                "issue_codes": [issue["code"] for issue in result["issues"]], "flag_counts": translations["extensions"]["flag_counts"]}
+
+
+# --------------------------------------------------------------------------- SUBTITLE_BUILD (W04)
+
+def _ass_template_ref(ctx: StageContext) -> dict | None:
+    """The machine timeline stored with the run's source revision (the OCR output it was built from); None -> base style."""
+    pointer = _source_pointer(ctx)
+    loaded = source_module.load_source_revision(ctx.project_dir, pointer["source_revision_id"])
+    return source_module.timeline_template_ref(loaded)
+
+
+class SubtitleBuildStage:
+    """Machine SRT + ASS from the canonical segments and their translations (plan 6.7 / 7.5)."""
+    name = "SUBTITLE_BUILD"
+
+    def signature_inputs(self, ctx: StageContext) -> dict:
+        pointer = _source_pointer(ctx)
+        translations_ref = _stage_output_ref(ctx, "TRANSLATION", "translations.json")
+        template = _ass_template_ref(ctx)
+        return {"segments_sha256": pointer["segments_ref"]["sha256"], "translations_sha256": translations_ref["sha256"],
+                "style": {"template_sha256": template["sha256"] if template else None, "base": None if template else subtitles.BASE_STYLE_ID},
+                "format_version": subtitles.MACHINE_FORMAT_VERSION, "output_formats": sorted(ctx.request["config_snapshot"]["app_config"]["defaults"]["output_formats"])}
+
+    def run(self, ctx: StageContext) -> dict:
+        pointer = _source_pointer(ctx)
+        segment_set = load_record("SegmentSet", safe_join(ctx.project_dir, pointer["segments_ref"]["path"]))
+        translations = load_record("TranslationSet", ctx.output_dir("TRANSLATION") / "translations.json")
+        record = _read_json(ctx.output_dir("MEDIA_PREP") / "media_record.json")
+        if translations["source_revision_id"] != segment_set["source_revision_id"]:
+            raise ContractError("TRANSLATION_IDENTITY_ERROR", "translations belong to another source revision", details={"rule_id": "QC04_IDENTITY"})
+        by_cue = {item["cue_id"]: item for item in translations["records"]}
+        cues = []
+        for segment in segment_set["segments"]:
+            item = by_cue.get(segment["cue_id"])
+            if item is None or item["source_text_sha256"] != sha256_text(segment["source_text"]):
+                raise ContractError("TRANSLATION_IDENTITY_ERROR", f"cue {segment['cue_id']} has no translation for its exact source text", details={"rule_id": "QC17_TRANSLATION"})
+            if not item["target_text"].strip():
+                raise ContractError("TRANSLATION_IDENTITY_ERROR", f"cue {segment['cue_id']} has an empty translation", details={"rule_id": "QC17_TRANSLATION"})
+            cues.append({"index": segment["index"], "cue_id": segment["cue_id"], "start_ms": segment["start_ms"], "end_ms": segment["end_ms"], "text": item["target_text"],
+                         "template_event": None, "visual_ids": segment["visual_ids"]})
+        if len(by_cue) != len(cues):
+            raise ContractError("TRANSLATION_IDENTITY_ERROR", "the translation set has records for cues that are not in the source revision", details={"rule_id": "QC04_IDENTITY"})
+        template_ref = _ass_template_ref(ctx)
+        if template_ref:
+            template_text = safe_join(ctx.project_dir, template_ref["path"]).read_text(encoding="utf-8-sig")
+            template = subtitles.parse_template(template_text)
+            ordinal_of = {event["id"]: event["ordinal"] for event in segment_set["visual_events"]}
+            for cue in cues:
+                if cue["visual_ids"] and cue["visual_ids"][0] in ordinal_of:
+                    cue["template_event"] = ordinal_of[cue["visual_ids"][0]]
+            style = {"source": "machine_timeline", "template_ref": template_ref, "styles": template["styles"], "events_in_template": len(template["events"])}
+        else:
+            template = subtitles.base_template()
+            style = {"source": subtitles.BASE_STYLE_ID, "template_ref": None, "styles": template["styles"], "fontname": "Microsoft YaHei", "fontsize": 80}
+        srt_bytes = subtitles.render_srt_bytes([(cue["start_ms"], cue["end_ms"], cue["text"]) for cue in cues])
+        ass_bytes, timing_rows = subtitles.render_ass(cues, template)
+        atomic_write_bytes(ctx.attempt_dir / MACHINE_SRT_NAME, srt_bytes)
+        atomic_write_bytes(ctx.attempt_dir / MACHINE_ASS_NAME, ass_bytes)
+        atomic_write_text(ctx.attempt_dir / "timing.ms.json", render_json({"schema_version": SCHEMA_VERSION, "resolution_note": "ASS times are the nearest 10 ms; these are the exact milliseconds",
+                                                                            "cues": timing_rows}))
+        atomic_write_text(ctx.attempt_dir / "style_profile.json", render_json({"schema_version": SCHEMA_VERSION, **style}))
+        expected = [{"index": cue["index"], "start_ms": cue["start_ms"], "end_ms": cue["end_ms"], "text": cue["text"]} for cue in cues]
+        checks = {"srt": subtitles.verify_written(ctx.attempt_dir / MACHINE_SRT_NAME, "srt", expected, duration_ms=record["duration_ms"]),
+                  "ass": subtitles.verify_written(ctx.attempt_dir / MACHINE_ASS_NAME, "ass", expected, duration_ms=record["duration_ms"])}
+        legacy = {}
+        if cues:
+            from artifact_validation import validate_subtitle
+            for kind, name in (("srt", MACHINE_SRT_NAME), ("ass", MACHINE_ASS_NAME)):
+                result = validate_subtitle(ctx.attempt_dir / name, "zh_machine", require_text=True, expected_language="zh", expected_cues=len(cues))
+                if not result.valid:
+                    raise ContractError("SUBTITLE_INVALID", f"the machine {kind.upper()} failed the legacy validator: {result.summary()}", details={"kind": kind, "errors": result.errors})
+                legacy[kind] = {"warnings": result.warnings, "cue_count": result.cue_count, "kana_chars": result.kana_char_count, "cjk_chars": result.cjk_char_count}
+        build = {"schema_version": SCHEMA_VERSION, "source_revision_id": segment_set["source_revision_id"], "translations_sha256": sha256_file(ctx.output_dir("TRANSLATION") / "translations.json"),
+                 "segments_sha256": pointer["segments_ref"]["sha256"], "cues": len(cues), "status": "EMPTY" if not cues else "OK", "read_back": checks, "legacy_validation": legacy,
+                 "style": style, "format_version": subtitles.MACHINE_FORMAT_VERSION}
+        atomic_write_text(ctx.attempt_dir / "subtitle_build.json", render_json(build))
+        return {"ok": True, "cues": len(cues), "status": build["status"], "style_source": style["source"], "legacy_warnings": {k: v["warnings"] for k, v in legacy.items()}}
+
+
+# --------------------------------------------------------------------------- QUALITY_AND_COMMIT (W04: structural gate + commit; soft rules arrive with W06)
+
+def _issue(revision_id: str, rule_id: str, severity: str, message: str, *, cue_ids: list[str], observed: Any, recommended: str, verification: str = "measured") -> dict:
+    return require_record("Issue", {"issue_id": new_id(), "rule_id": rule_id, "severity": severity, "revision_id": revision_id, "cue_ids": cue_ids, "start_ms": None, "end_ms": None,
+                                    "source_refs": [], "observed": observed, "threshold": None, "message": message, "recommended_action": recommended, "verification": verification})
+
+
+def _find_machine_revision(project_dir: Path, *, run_id: str, srt_sha256: str, ass_sha256: str, translations_sha256: str) -> dict | None:
+    root = Path(project_dir) / "revisions" / "machine"
+    if not root.is_dir():
+        return None
+    for candidate in sorted(root.iterdir()):
+        if not (candidate / MANIFEST_NAME).is_file():
+            continue
+        try:
+            record = load_record("MachineRevision", candidate / MANIFEST_NAME)
+        except ContractError:
+            continue
+        if (record["run_id"], record["subtitle_files"]["srt"]["sha256"], record["subtitle_files"]["ass"]["sha256"], record["translations_ref"]["sha256"]) == (run_id, srt_sha256, ass_sha256, translations_sha256):
+            try:
+                verify_committed(candidate, machine_revision_refs(record))
+            except ContractError:
+                continue
+            return record
+    return None
+
+
+def machine_revision_refs(record: dict) -> list[dict]:
+    return [record["subtitle_files"]["srt"], record["subtitle_files"]["ass"], record["translations_ref"], record["quality_ref"], *record["raw_evidence_refs"]]
+
+
+class QualityAndCommitStage:
+    """W04 part of QUALITY_AND_COMMIT: the hard structural/identity gate (QC01-QC06, QC17, QC23) and the immutable
+    MachineRevision. The soft rules QC07-QC16, QC18-QC22 and the review CSV/HTML are W06; the report says which rules ran."""
+    name = "QUALITY_AND_COMMIT"
+
+    def signature_inputs(self, ctx: StageContext) -> dict:
+        pointer = _source_pointer(ctx)
+        record = _read_json(ctx.output_dir("MEDIA_PREP") / "media_record.json")
+        return {"srt_sha256": _stage_output_ref(ctx, "SUBTITLE_BUILD", MACHINE_SRT_NAME)["sha256"], "ass_sha256": _stage_output_ref(ctx, "SUBTITLE_BUILD", MACHINE_ASS_NAME)["sha256"],
+                "translations_sha256": _stage_output_ref(ctx, "TRANSLATION", "translations.json")["sha256"], "source_revision_id": pointer["source_revision_id"],
+                "media_id": record["media_id"], "duration_ms": record["duration_ms"], "quality": ctx.request["config_snapshot"]["app_config"]["quality"],
+                "gate_version": QUALITY_GATE_VERSION, "gate_rules": list(GATE_RULES)}
+
+    def run(self, ctx: StageContext) -> dict:
+        request = ctx.request
+        pointer = _source_pointer(ctx)
+        record = _read_json(ctx.output_dir("MEDIA_PREP") / "media_record.json")
+        build_dir, translation_dir = ctx.output_dir("SUBTITLE_BUILD"), ctx.output_dir("TRANSLATION")
+        build = _read_json(build_dir / "subtitle_build.json")
+        translations = load_record("TranslationSet", translation_dir / "translations.json")
+        loaded = source_module.load_source_revision(ctx.project_dir, pointer["source_revision_id"])
+        segment_set = loaded["segment_set"]
+        # identity (QC04): every stage output refers to the same source revision, media and translation bytes
+        translations_sha256 = sha256_file(translation_dir / "translations.json")
+        if build["translations_sha256"] != translations_sha256 or build["segments_sha256"] != pointer["segments_ref"]["sha256"] \
+                or translations["source_revision_id"] != segment_set["source_revision_id"] or segment_set["media_id"] != record["media_id"]:
+            raise ContractError("TRANSLATION_IDENTITY_ERROR", "the subtitle build, translations and source revision do not describe the same inputs", details={"rule_id": "QC04_IDENTITY"})
+        # coverage (QC05) re-audited on the stored v8 record for machine sources
+        if loaded["record"]["origin"] == "machine":
+            from subtitle_segments import audit_segment_records
+            try:
+                audit_segment_records(source_module.read_json(loaded["dir"] / source_module.V8_RECORDS_NAME))
+            except ValueError as exc:
+                raise ContractError("SOURCE_COVERAGE_ERROR", f"the committed source revision no longer passes the coverage audit: {exc}", details={"rule_id": "QC05_COVERAGE"}) from exc
+        expected = []
+        by_cue = {item["cue_id"]: item for item in translations["records"]}
+        for segment in segment_set["segments"]:
+            item = by_cue.get(segment["cue_id"])
+            if item is None or not item["target_text"].strip():
+                raise ContractError("TRANSLATION_IDENTITY_ERROR", f"cue {segment['cue_id']} has no complete translation", details={"rule_id": "QC17_TRANSLATION"})
+            expected.append({"index": segment["index"], "start_ms": segment["start_ms"], "end_ms": segment["end_ms"], "text": item["target_text"]})
+        # the files are read back once more against the canonical values and the media bounds (QC01/QC02/QC03/QC06)
+        read_back = {"srt": subtitles.verify_written(build_dir / MACHINE_SRT_NAME, "srt", expected, duration_ms=record["duration_ms"]),
+                     "ass": subtitles.verify_written(build_dir / MACHINE_ASS_NAME, "ass", expected, duration_ms=record["duration_ms"])}
+        srt_sha256, ass_sha256 = sha256_file(build_dir / MACHINE_SRT_NAME), sha256_file(build_dir / MACHINE_ASS_NAME)
+        existing = _find_machine_revision(ctx.project_dir, run_id=ctx.task["run_id"], srt_sha256=srt_sha256, ass_sha256=ass_sha256, translations_sha256=translations_sha256)
+        if existing is not None:
+            revision_id = existing["revision_id"]
+            ctx.emit({"event": "machine_revision_reused", "revision_id": revision_id})
+        else:
+            revision_id = new_id()
+            quality = self._quality_report(revision_id, request, segment_set, translations, record, loaded)
+            pending = begin_pending(ctx.project_dir)
+            shutil.copy2(build_dir / MACHINE_SRT_NAME, pending / MACHINE_SRT_NAME)
+            shutil.copy2(build_dir / MACHINE_ASS_NAME, pending / MACHINE_ASS_NAME)
+            for name in ("timing.ms.json", "style_profile.json", "subtitle_build.json"):
+                shutil.copy2(build_dir / name, pending / name)
+            shutil.copy2(translation_dir / "translations.json", pending / "translations.json")
+            shutil.copy2(translation_dir / "postprocess_trace.json", pending / "postprocess_trace.json")
+            if (translation_dir / "exchanges").is_dir():
+                shutil.copytree(translation_dir / "exchanges", pending / "exchanges")
+            atomic_write_text(pending / "quality.json", render_json(quality["report"]))
+            atomic_write_text(pending / "quality_scope.json", render_json(quality["scope"]))
+            if sha256_file(pending / MACHINE_SRT_NAME) != srt_sha256 or sha256_file(pending / MACHINE_ASS_NAME) != ass_sha256 or sha256_file(pending / "translations.json") != translations_sha256:
+                raise ContractError("ARTIFACT_CHANGED", "the copied subtitle files differ from the verified stage outputs", details={"rule_id": "QC04_IDENTITY"})
+            source_revision_id, media_id, run_id, project_id = segment_set["source_revision_id"], record["media_id"], ctx.task["run_id"], request["project_id"]
+
+            def build_manifest(refs: list[dict]) -> dict:
+                by_path = {ref["path"]: ref for ref in refs}
+                named = {MACHINE_SRT_NAME, MACHINE_ASS_NAME, "translations.json", "quality.json"}
+                return {"schema_version": SCHEMA_VERSION, "revision_id": revision_id, "project_id": project_id, "run_id": run_id, "media_id": media_id,
+                        "source_revision_id": source_revision_id, "subtitle_files": {"srt": by_path[MACHINE_SRT_NAME], "ass": by_path[MACHINE_ASS_NAME]},
+                        "translations_ref": by_path["translations.json"], "quality_ref": by_path["quality.json"],
+                        "raw_evidence_refs": [ref for path, ref in sorted(by_path.items()) if path not in named], "created_at": utc_now()}
+
+            commit_pending(pending, ctx.project_dir / "revisions" / "machine" / revision_id, manifest_kind="MachineRevision", build_manifest=build_manifest)
+            ctx.emit({"event": "machine_revision_committed", "revision_id": revision_id, "cues": len(expected), "empty": not expected, "issues": len(quality["report"]["issues"])})
+        revision_dir = ctx.project_dir / "revisions" / "machine" / revision_id
+        manifest = read_manifest(revision_dir, "MachineRevision")
+        verify_committed(revision_dir, machine_revision_refs(manifest))
+        quality_report = load_record("QualityReport", revision_dir / "quality.json")
+        atomic_write_text(ctx.attempt_dir / "machine_revision_ref.json", render_json({"schema_version": SCHEMA_VERSION, "machine_revision_id": revision_id,
+                                                                                       "manifest_ref": artifact_ref(ctx.project_dir, revision_dir / MANIFEST_NAME), "read_back": read_back}))
+        return {"ok": True, "machine_revision_id": revision_id, "source_revision_id": pointer["source_revision_id"], "cues": len(expected), "empty": not expected,
+                "structural_status": quality_report["structural_status"], "human_status": quality_report["human_status"],
+                "issue_rule_ids": [issue["rule_id"] for issue in quality_report["issues"]], "gate_rules": list(GATE_RULES)}
+
+    def _quality_report(self, revision_id: str, request: dict, segment_set: dict, translations: dict, media_record: dict, loaded_source: dict) -> dict:
+        issues: list[dict] = []
+        if not segment_set["segments"]:
+            issues.append(_issue(revision_id, "QC23_EMPTY", "WARNING", "no subtitle was produced: the recognition returned no text for this mode (EMPTY is a result, not an error)",
+                                 cue_ids=[], observed={"segments": 0, "recognition_mode": segment_set["recognition_mode"]},
+                                 recommended="check the audio/on-screen text or try another mode; no placeholder cue was created"))
+        unknown: list[str] = []
+        for ref_name, capability in (("visual_evidence.json", "ocr_scores"), ("visual_evidence.json", "frame_pts")):
+            evidence_path = loaded_source["dir"] / "recognition" / ref_name
+            if evidence_path.is_file():
+                evidence = source_module.read_json(evidence_path)
+                if evidence["extensions"].get("score_status" if capability == "ocr_scores" else "frame_pts_status") == "unknown" and capability not in unknown:
+                    unknown.append(capability)
+        speech_path = loaded_source["dir"] / "recognition" / "speech_evidence.json"
+        if speech_path.is_file():
+            speech = source_module.read_json(speech_path)
+            if all(parent["score"] is None for parent in speech["parents"]):
+                unknown.append("asr_scores")
+            if speech["activity_intervals"] is None:
+                unknown.append("speech_activity")
+        report = require_record("QualityReport", {
+            "schema_version": SCHEMA_VERSION, "revision_id": revision_id, "rule_set_version": int(request["config_snapshot"]["app_config"]["quality"]["rule_set_version"]),
+            "issues": issues, "unknown_capabilities": unknown, "structural_status": "valid", "human_status": "UNREVIEWED", "confirmed_scopes": [], "generated_at": utc_now()})
+        scope = {"schema_version": SCHEMA_VERSION, "gate_version": QUALITY_GATE_VERSION, "evaluated_rules": list(GATE_RULES),
+                 "not_evaluated_rules": ["QC07_DURATION", "QC08_SPEED", "QC09_OVERLAP", "QC10_OCR_SCORE", "QC11_ASR_SCORE", "QC12_SCORE_UNKNOWN", "QC13_OCR_CONTINUITY",
+                                         "QC14_SOURCE_CONFLICT", "QC15_WORD_CLOCK", "QC16_ACTIVITY_GAP", "QC18_TERMS", "QC19_UNCERTAIN", "QC20_REVIEW_BASE", "QC21_MEDIA_BINDING", "QC22_FONT"],
+                 "note": "W04 commits a machine revision after the structural/identity gate only; the soft rules, review.csv and review.html are work package W06. "
+                         "Segment flags (segments.json) and translation flags (translations.json) are kept for them.",
+                 "flag_counts": {"segments": _flag_counts(segment["flags"] for segment in segment_set["segments"]),
+                                 "translations": _flag_counts(item["flags"] for item in translations["records"])}}
+        return {"report": report, "scope": scope}
+
+
+def _flag_counts(flag_lists) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for flags in flag_lists:
+        for flag in flags:
+            counts[flag] = counts.get(flag, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 # --------------------------------------------------------------------------- submit-time stream check

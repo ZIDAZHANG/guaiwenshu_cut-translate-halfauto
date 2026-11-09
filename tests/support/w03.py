@@ -246,7 +246,7 @@ def make_engine_resources(root: Path) -> dict[str, Path]:
 
 
 RESOURCE_KINDS = {"whisper-cli": "asr_engine", "whisper-model": "model", "whisper-vad-model": "model", "magia-timeline": "ocr_engine",
-                  "ffmpeg": "ffmpeg", "ffprobe": "ffprobe"}
+                  "ffmpeg": "ffmpeg", "ffprobe": "ffprobe", "llama-server": "translation_engine", "sakura-model": "model"}
 MAGIA_FILES = ["MagiaTimeline.exe", "config.yml", "template.asst", "ConfigSchema.json", "PaddleOCRModels/model.bin"]
 
 

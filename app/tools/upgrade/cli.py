@@ -149,10 +149,20 @@ def _parse_stream(value: str | None) -> int | None:
         raise ContractError("NEEDS_SELECTION", f"stream index must be an integer or 'none', got {value!r}") from exc
 
 
+def _dictionary_for_request(config: dict, engine: dict, *, accept: bool) -> tuple[dict, list]:
+    """Plan 8.5 pre-check: freeze the dictionary revision for this request and settle the acceptance of unsupported entries."""
+    from upgrade.dictionary import prepare_for_request
+    prepared = prepare_for_request(config["data_root"], engine, accept_warnings=accept)
+    warnings = [{"code": "DICTIONARY_UNSUPPORTED_ACCEPTED", "count": len(prepared["unsupported"]), "entries": prepared["unsupported"]}] if prepared["unsupported"] else []
+    warnings += [{"code": "DICTIONARY_CONFLICT", **item} for item in prepared["warnings"]]
+    return prepared, warnings
+
+
 def cmd_submit(args: argparse.Namespace) -> int:
-    from upgrade.runner import build_job_request, submit
+    from upgrade.runner import build_job_request, project_dir, submit
     config = _load_config(args.config)
     engine = _engine_settings_for(config)
+    source_media_id = None
     if args.mode == "supplied_source":
         if not (args.project and args.source_revision):
             raise ContractError("NEEDS_SELECTION", "supplied_source needs --project ID and --source-revision ID")
@@ -160,7 +170,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
         raise ContractError("NEEDS_SELECTION", "--source-revision is only valid with --mode supplied_source")
     if args.timing_mode and args.mode != "combined":
         raise ContractError("NEEDS_SELECTION", "--timing-mode only applies to --mode combined (speech_only=speech, visual_only=screen are fixed)")
-    video_stream, audio_stream, warnings = _parse_stream(args.video_stream), _parse_stream(args.audio_stream), []
+    video_stream, audio_stream = _parse_stream(args.video_stream), _parse_stream(args.audio_stream)
+    prepared, warnings = _dictionary_for_request(config, engine, accept=args.accept_dictionary_warnings)
     if args.video:
         video = Path(args.video)
         if not video.is_file():
@@ -177,12 +188,15 @@ def cmd_submit(args: argparse.Namespace) -> int:
     else:
         if args.mode != "supplied_source":
             raise ContractError("NEEDS_SELECTION", "give --video FILE or --url URL")
-        input_kind, input_value, default_name = "local_video", "supplied-source", args.project
+        from upgrade.source import load_source_revision
+        loaded = load_source_revision(project_dir(config["data_root"], args.project), args.source_revision)
+        source_media_id = loaded["record"]["media_id"]             # the media the source revision is bound to (plan 10.1: SOURCE reads the revision)
+        input_kind, input_value, default_name = "local_video", f"supplied-source:{args.source_revision}", args.project
     request = build_job_request(
         config, engine, input_kind=input_kind, input_value=input_value, recognition_mode=args.mode, timing_mode=args.timing_mode,
         project_id=args.project, video_stream_index=video_stream, audio_stream_index=audio_stream,
-        source_revision_id=args.source_revision, dictionary_revision_id="none", resource_refs=_resource_refs_for(config),
-        accepted_dictionary_warnings=["accepted"] if args.accept_dictionary_warnings else [],
+        source_revision_id=args.source_revision, source_media_id=source_media_id, dictionary_revision_id=prepared["revision_id"],
+        resource_refs=_resource_refs_for(config), accepted_dictionary_warnings=prepared["accepted_ids"],
     )
     if args.audio_stream == "none":
         request["extensions"]["audio_stream"] = "none"
@@ -190,6 +204,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         request["extensions"]["copy_original"] = True
     envelope = submit(config["data_root"], request, display_name=args.display_name or default_name)
     _emit(_result("submit", ok=True, ids={"project_id": request["project_id"], "request_id": request["request_id"], "status": envelope["status"],
+                                           "dictionary_revision_id": prepared["revision_id"],
                                            "duplicate": envelope["request"]["request_id"] == request["request_id"] and envelope["created_at"] != request["created_at"]},
                   warnings=warnings))
     return EXIT_OK
@@ -227,6 +242,7 @@ def cmd_inbox_intake(args: argparse.Namespace) -> int:
     config = _load_config(args.config)
     engine = _engine_settings_for(config)
     refs = _resource_refs_for(config)
+    prepared, _ = _dictionary_for_request(config, engine, accept=False)   # legacy inbox files carry no acceptance; unaccepted entries stop the intake
 
     def factory(parsed: dict, source: Path) -> dict:
         url = str(parsed.get("url", "")).strip()
@@ -236,7 +252,8 @@ def cmd_inbox_intake(args: argparse.Namespace) -> int:
         mode = str(parsed.get("mode", "")).strip() or config["defaults"]["recognition_mode"]
         timing = str(parsed.get("timing_mode", "")).strip() or None
         return build_job_request(config, engine, input_kind="url" if url else "local_video", input_value=url or video, recognition_mode=mode,
-                                 timing_mode=timing if mode == "combined" else None, dictionary_revision_id="none", resource_refs=refs)
+                                 timing_mode=timing if mode == "combined" else None, dictionary_revision_id=prepared["revision_id"], resource_refs=refs,
+                                 accepted_dictionary_warnings=prepared["accepted_ids"])
 
     rows = intake(config["data_root"], args.inbox, factory, event_sink=lambda e: _log(json.dumps(e, ensure_ascii=False)))
     failed = [row for row in rows if row["action"] == "failed"]

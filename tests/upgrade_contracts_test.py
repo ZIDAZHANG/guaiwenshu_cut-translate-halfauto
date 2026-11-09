@@ -143,6 +143,7 @@ class ImportIsolationTests(unittest.TestCase):
         code = ("import sys, json\n"
                 "import upgrade.contracts, upgrade.config, upgrade.storage, upgrade.resource_catalog, upgrade.cli\n"
                 "import upgrade.media, upgrade.recognition, upgrade.stages, upgrade.stage_registry\n"
+                "import upgrade.source, upgrade.dictionary, upgrade.translation, upgrade.subtitles\n"
                 "forbidden = ['torch', 'paddle', 'qwen_asr', 'pywinauto', 'tkinter', 'win32gui', 'PIL', 'yaml']\n"
                 "print(json.dumps(sorted(m for m in forbidden if m in sys.modules)))\n")
         completed = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=os.environ.copy())

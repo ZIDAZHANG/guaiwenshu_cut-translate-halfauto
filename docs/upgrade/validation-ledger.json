@@ -2,7 +2,7 @@
   "schema_version": 2,
   "record_kind": "validation_ledger",
   "plan_section": "14.5",
-  "updated_at": "2026-11-09T16:06:05Z",
+  "updated_at": "2026-11-10T09:00:00Z",
   "entries": [
     {
       "test_id": "LEGACY-22-NOYAML",
@@ -172,6 +172,55 @@
       "remaining_limitations": "只验证了直链（generic extractor）与回环网络；没有访问任何真实视频站点，站点提取器、代理、登录、播放列表 URL 的行为未实测；下载失败后改用本地文件的路径只体现在错误信息里"
     },
     {
+      "test_id": "T03-W04",
+      "requirement_ids": [
+        "FR03",
+        "FR04",
+        "FR07"
+      ],
+      "build_sha": "W04 working tree on top of 7de0452 (see completion-W04.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {
+        "v8_canonical_slice": "tests/fixtures/v8_canonical_slice.json (frozen from subtitle_segments.py at baseline 93df262)"
+      },
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-10T09:00:00Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_source_test.py",
+        "tests/upgrade_subtitles_test.py",
+        "tests/upgrade_stages_test.py",
+        "LOCAL_WORKSPACE/roast-w04-tests-summary.json"
+      ],
+      "observed": "v8 canonical ranges/times/texts/ids identical for mixed/screen/speech (direct algorithm call = frozen fixture = stored segments.v8.json); visual_only role=screen with coverage not_applicable; EMPTY explicit; OCR/ASR texts never overwrite each other; machine SRT/ASS formats per 6.7/7.5; eight-stage queue delivers a committed MachineRevision; failed translation leaves no pointer",
+      "expected": "canonical identity preserved; mode semantics per 8.3; machine files per 6.7; no revision pointer on failure",
+      "remaining_limitations": "soft quality rules (QC07-QC16, QC18-QC22) and review CSV/HTML are W06; real engine outputs not used (B01)"
+    },
+    {
+      "test_id": "T04-W04",
+      "requirement_ids": [
+        "FR03"
+      ],
+      "build_sha": "W04 working tree on top of 7de0452 (see completion-W04.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {
+        "model_server": "tests/support/fake_llama_server.py (scripted loopback process, not a model)"
+      },
+      "evidence_kind": "real_http",
+      "executed_at": "2026-11-10T09:00:00Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_translation_test.py",
+        "tests/upgrade_dictionary_test.py",
+        "LOCAL_WORKSPACE/roast-w04-tests-summary.json"
+      ],
+      "observed": "complete SSE mapped in order with legacy prompt bytes; dropped stream kept as evidence and retried; wrong line count split into single requests with the batch as reference; a failing cue gets exactly 3 attempts then the stage stops; resume repeats no request for checkpointed cues; HTTP 400 context overflow -> CONTEXT_EXCEEDED once with full pending text; foreign listener -> SERVER_PORT_CONFLICT and left running; wrong model name not adopted; server exit during startup fails fast; cancel aborts a silent stream in <1 s and stops the server; 60 s idle -> waiting event only; pre/gpt/post/once/prefix/unsupported lines diagnosed in agreement with the legacy parser; acceptance asked once per content",
+      "expected": "plan 8.4/8.5 rules",
+      "remaining_limitations": "protocol only: no real llama-server or Sakura model on the execution machine (B01); assumptions Q-W04-2 pending W09"
+    },
+    {
       "test_id": "T03",
       "requirement_ids": [
         "FR02",
@@ -190,7 +239,7 @@
       "evidence_paths": [],
       "observed": "",
       "expected": "",
-      "remaining_limitations": "整组仍为 NOT_RUN：W03 负责的识别/时钟夹具部分见 T03-W03（PASS）；分段契约（v8 frozen evidence）属 W04，质量规则表属 W06"
+      "remaining_limitations": "segmentation/format/identity part PASS (T03-W03, T03-W04); the quality-rule table (QC hard errors per class, warnings, score unknown, cross-role overlap) arrives with W06 - overall T03 stays NOT_RUN until then"
     },
     {
       "test_id": "T04",
@@ -198,17 +247,20 @@
         "FR03",
         "FR07"
       ],
-      "build_sha": "1a9a0104defbd9881db3f9eded017ad7b1f96edc",
+      "build_sha": "W04 working tree on top of 7de0452 (see completion-W04.md for the commit)",
       "config_sha": null,
       "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
       "input_hashes": {},
       "evidence_kind": "real_http",
-      "executed_at": null,
-      "status": "NOT_RUN",
-      "evidence_paths": [],
-      "observed": "",
-      "expected": "",
-      "remaining_limitations": "W04 实施后运行；loopback 假模型"
+      "executed_at": "2026-11-10T09:00:00Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_translation_test.py",
+        "tests/upgrade_dictionary_test.py"
+      ],
+      "observed": "see T04-W04",
+      "expected": "see T04-W04",
+      "remaining_limitations": "verified against a scripted loopback server, not a real model (B01); real-engine run belongs to T07 (W09)"
     },
     {
       "test_id": "T05",

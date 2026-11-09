@@ -158,7 +158,7 @@ def migrate_legacy_config(legacy: dict, *, data_root: str | Path, ascii_temp_roo
     if not isinstance(legacy, dict):
         raise ContractError("SCHEMA_INVALID", "legacy config root must be an object")
     config = default_app_config(data_root, ascii_temp_root=ascii_temp_root)
-    engine: dict[str, Any] = {"translation": {}, "recognition": {}, "ocr": {}, "media": {}, "download": {}}
+    engine: dict[str, Any] = {"translation": {}, "recognition": {}, "ocr": {}, "media": {}, "download": {}, "dictionary": {}}
     consumed: set[str] = set()
     report: dict[str, Any] = {"mapped": [], "unsupported_commands": [], "suggested_resources": {}, "legacy_extra": {}, "notes": []}
 
@@ -184,6 +184,15 @@ def migrate_legacy_config(legacy: dict, *, data_root: str | Path, ascii_temp_roo
         if translation.get(key):
             report["suggested_resources"][f"translation.{key}"] = translation[key]
     consumed.add("translation")
+    # dictionary files (plan 8.5): explicit absolute paths are kept; relative legacy paths pointed at the bundled defaults, which v2 resolves itself
+    resources = legacy.get("resources") if isinstance(legacy.get("resources"), dict) else {}
+    for legacy_key, role in (("translation_prompt", "style_prompt"), ("translation_glossary", "glossary")):
+        value = str(resources.get(legacy_key) or "").strip()
+        if value and Path(value).is_absolute():
+            engine.setdefault("dictionary", {})[role] = value
+            report["mapped"].append(f"resources.{legacy_key} -> dictionary.{role}")
+        elif value:
+            report["notes"].append(f"resources.{legacy_key}={value!r} is a relative legacy path; v2 uses its bundled default for dictionary.{role} unless a file is chosen")
 
     recognition = legacy.get("recognition") if isinstance(legacy.get("recognition"), dict) else {}
     for key in LEGACY_RECOGNITION_KEYS:

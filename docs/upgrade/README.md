@@ -17,6 +17,7 @@
 | `completion-W01.md` | W01 完成报告 | W01 |
 | `completion-W02.md` | W02 完成报告 | W02 |
 | `completion-W03.md` | W03 完成报告（媒体时钟、派生媒体、两类识别接入） | W03 |
+| `completion-W04.md` | W04 完成报告（源版本、词典版本、翻译、机器 SRT/ASS、结构门禁与机器版本提交；里程碑 M1） | W04 |
 
 不入库的私有快照（`.gitignore` 排除 `*.private.json`）：`effective-config.private.json`、`resources-inventory.private.json`，保存执行机的实际绝对路径。
 

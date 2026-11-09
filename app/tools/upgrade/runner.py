@@ -367,7 +367,7 @@ class QueueRunner:
         cancel = cancel or CancelToken()
         if continue_on_error is None:
             continue_on_error = bool(self.config["defaults"]["continue_on_error"])
-        summary = {"processed": 0, "completed": 0, "failed": 0, "cancelled": 0, "interrupted": 0, "recovered": None}
+        summary: dict[str, Any] = {"processed": 0, "completed": 0, "failed": 0, "cancelled": 0, "interrupted": 0, "recovered": None, "requests": []}
         with ExecutorLock(self.data_root) as lock:
             self.owner_token = lock.owner_token
             summary["recovered"] = _recover_owned(self.data_root)  # we hold the lock: no other executor is live
@@ -388,6 +388,14 @@ class QueueRunner:
                 status = self._run_request(envelope, cancel)
                 summary["processed"] += 1
                 summary[{"COMPLETED": "completed", "FAILED": "failed", "CANCELLED": "cancelled", "INTERRUPTED": "interrupted"}[status]] += 1
+                finished = load_envelope(self.data_root, request_id)
+                project = project_dir(self.data_root, finished["request"]["project_id"])
+                task = load_task(run_dir(project, finished["run_id"])) if finished.get("run_id") else None
+                revision_id = task.get("machine_revision_id") if task else None
+                summary["requests"].append({"request_id": request_id, "project_id": finished["request"]["project_id"], "run_id": finished.get("run_id"), "status": status,
+                                            "machine_revision_id": revision_id,
+                                            "machine_revision_dir": str(project / "revisions" / "machine" / revision_id) if revision_id else None,
+                                            "error": finished["last_error"]["code"] if finished.get("last_error") else None})
                 if status == "FAILED" and not continue_on_error:
                     break
         return summary
@@ -491,6 +499,9 @@ class QueueRunner:
                 stage["attempts"].append({"attempt_id": manifest["attempt_id"], "status": "DONE", "started_at": manifest["committed_at"],
                                           "ended_at": manifest["committed_at"], "input_signature": sig, "output_manifest": pointer, "error": None})
             stage.update({"status": "DONE", "input_signature": sig, "output_manifest": pointer, "ended_at": stage.get("ended_at") or utc_now(), "error": None})
+            reused_validation = _read_validation(attempt_dir)
+            if isinstance(reused_validation.get("machine_revision_id"), str):
+                task["machine_revision_id"] = reused_validation["machine_revision_id"]   # the same committed revision serves this run
             _save_task(run, task)
             ctx.outputs[name] = {"manifest": manifest, "dir": attempt_dir}
             ctx.emit({"event": "stage_cache_hit", "stage": name, "attempt_id": manifest["attempt_id"], "source_run": source_run, "cache_hit": True})
@@ -593,6 +604,16 @@ class QueueRunner:
         _save_task(ctx.run_dir, task)
         ctx.emit({"event": "stage_cancelled", "stage": name, "reason": ctx.cancel.reason})
         return "CANCELLED"
+
+
+def _read_validation(attempt_dir: Path) -> dict:
+    from upgrade.contracts import parse_json_text
+    path = attempt_dir / "validation.json"
+    try:
+        value = parse_json_text(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError, UnicodeDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _recover_owned(data_root: Path) -> dict:

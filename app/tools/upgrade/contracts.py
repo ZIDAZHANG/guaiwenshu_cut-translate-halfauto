@@ -365,6 +365,31 @@ RECORDS: dict[str, dict[str, F]] = {
         "raw_response_ref": _rec("ArtifactRef"), "engine_ref": _rec("ResourceRef"), "model_ref": _rec("ResourceRef"), "dictionary_revision_id": _str(nonempty=True),
         "prompt_sha256": _sha(), "postprocess_trace_ref": _rec("ArtifactRef"), "flags": _list(item=_str()),
     },
+    # ---- W04 containers: the file a SourceRevision.segments_ref points to, the file a translations_ref points to,
+    #      the immutable dictionary revision (plan 8.5) and the in-memory TranslationRequest (plan 6.8)
+    "SegmentSet": {
+        "schema_version": F("int"), "source_revision_id": _uuid(), "media_id": _uuid(), "origin": _str(enum=("machine", "human")),
+        "recognition_mode": _str(enum=RECOGNITION_MODES), "timing_mode": _str(enum=TIMING_MODES), "status": _str(enum=("OK", "EMPTY")),
+        "segments": _list(record="Segment"), "parents": _list(item=F("object")), "visual_events": _list(item=F("object")),
+        "unresolved_visual_events": _list(item=F("object")), "coverage": F("object"), "extensions": F("object"),
+    },
+    "TranslationSet": {
+        "schema_version": F("int"), "source_revision_id": _uuid(), "translation_signature": _sha(), "dictionary_revision_id": _str(nonempty=True),
+        "engine_ref": _rec("ResourceRef"), "model_ref": _rec("ResourceRef"), "parameters": F("object"), "status": _str(enum=("OK", "EMPTY")),
+        "records": _list(record="TranslationRecord"), "extensions": F("object"),
+    },
+    "DictionaryFile": {
+        "role": _str(enum=("pre", "gpt", "post", "glossary", "style_prompt", "guideline", "project_config")), "original_name": _str(nonempty=True),
+        "origin": _str(enum=("user_file", "bundled_default")), "artifact": _rec("ArtifactRef"),
+    },
+    "DictionaryRevision": {
+        "schema_version": F("int"), "revision_id": _uuid(), "content_sha256": _sha(), "files": _list(record="DictionaryFile"),
+        "diagnostics_ref": _rec("ArtifactRef"), "created_at": _utc(), "extensions": F("object"),
+    },
+    "TranslationRequest": {
+        "run_id": _uuid(), "source_revision_id": _uuid(), "segments_ref": _rec("ArtifactRef", doc="relative to the project directory"),
+        "config_snapshot": _rec("ConfigSnapshot"), "checkpoint_dir": _str(nonempty=True),
+    },
     "Issue": {
         "issue_id": _uuid(), "rule_id": F("str", check=lambda v: None if RULE_ID_RE.match(v) else "must look like QC01_PARSE"), "severity": _str(enum=SEVERITIES),
         "revision_id": _uuid(), "cue_ids": _list(item=_str()), "start_ms": _ms(nullable=True), "end_ms": _ms(nullable=True), "source_refs": _list(item=_str()),
@@ -527,6 +552,43 @@ def _check_recognition_request(value: dict) -> list[str]:
     return problems
 
 
+def _check_segment(value: dict) -> list[str]:
+    problems = _check_interval_like(value)
+    for source_range in value.get("source_ranges") or []:
+        try:
+            if source_range["char_start"] >= source_range["char_end"]:
+                problems.append("source_ranges must be non-empty half-open character ranges")
+        except (KeyError, TypeError):
+            pass
+    return problems
+
+
+def _check_segment_set(value: dict) -> list[str]:
+    problems = []
+    segments = value.get("segments") or []
+    cue_ids = [segment.get("cue_id") for segment in segments if isinstance(segment, dict)]
+    if len(set(cue_ids)) != len(cue_ids):
+        problems.append("cue_id must be unique inside one source revision")
+    if [segment.get("index") for segment in segments if isinstance(segment, dict)] != list(range(1, len(segments) + 1)):
+        problems.append("segment index must count from 1 without gaps")
+    if (value.get("status") == "EMPTY") != (not segments):
+        problems.append("status must be EMPTY exactly when there are no segments")
+    return problems
+
+
+def _check_translation_set(value: dict) -> list[str]:
+    problems = []
+    records = value.get("records") or []
+    cue_ids = [record.get("cue_id") for record in records if isinstance(record, dict)]
+    if len(set(cue_ids)) != len(cue_ids):
+        problems.append("a cue must have exactly one translation record")
+    if any(isinstance(record, dict) and record.get("source_revision_id") != value.get("source_revision_id") for record in records):
+        problems.append("every translation record must belong to the set's source revision")
+    if (value.get("status") == "EMPTY") != (not records):
+        problems.append("status must be EMPTY exactly when there are no records")
+    return problems
+
+
 def _check_operation_result(value: dict) -> list[str]:
     if value.get("error") is not None and value.get("ok") is not False:
         return ["ok must be false when error is present"]
@@ -541,9 +603,9 @@ def _check_error_object(value: dict) -> list[str]:
 RECORD_CHECKS: dict[str, Callable[[dict], list[str]]] = {
     "QualityConfig": _check_quality_config, "JobRequest": _check_job_request, "ConfigSnapshot": _check_config_snapshot,
     "MediaRecord": _check_media_record, "ROI": _check_roi, "Word": _check_word, "Interval": _check_interval_like,
-    "Parent": _check_interval_like, "Segment": _check_interval_like, "VisualEvent": _check_interval_like,
+    "Parent": _check_interval_like, "Segment": _check_segment, "VisualEvent": _check_interval_like,
     "OperationResult": _check_operation_result, "ErrorObject": _check_error_object,
-    "RecognitionRequest": _check_recognition_request,
+    "RecognitionRequest": _check_recognition_request, "SegmentSet": _check_segment_set, "TranslationSet": _check_translation_set,
 }
 
 SENSITIVE_KEY_RE = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential)", re.IGNORECASE)

@@ -38,6 +38,9 @@
       "work_packages": [
         "W03",
         "W04"
+      ],
+      "notes": [
+        "W04: implemented and verified with fixtures/loopback; real engines pending W09"
       ]
     },
     "FR04": {
@@ -48,6 +51,9 @@
       ],
       "work_packages": [
         "W04"
+      ],
+      "notes": [
+        "W04: implemented and verified with fixtures/loopback; real engines pending W09"
       ]
     },
     "FR05": {
@@ -82,6 +88,9 @@
       "work_packages": [
         "W04",
         "W05"
+      ],
+      "notes": [
+        "W04: implemented and verified with fixtures/loopback; real engines pending W09"
       ]
     },
     "FR08": {
@@ -316,7 +325,9 @@
         "T04"
       ],
       "milestone": "M1",
-      "status": "NOT_STARTED"
+      "status": "COMPLETED",
+      "completion_record": "docs/upgrade/completion-W04.md",
+      "note": "T03 segmentation/format part and T04 protocol part PASS with fixtures, real loopback HTTP and a scripted model-server process; real llama-server + Sakura model NOT_RUN (B01, W09); QUALITY_AND_COMMIT is the structural gate only (soft rules W06); milestone M1 reached"
     },
     "W05": {
       "title": "人工中文/日文修订闭环",
