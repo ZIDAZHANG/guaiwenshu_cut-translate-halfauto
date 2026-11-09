@@ -13,7 +13,7 @@ Guarantees implemented here:
 - cache reuse needs an identical input signature and a verified manifest, never just a matching file name;
 - cancellation: cooperative token + owned-process termination (process_runner); other processes are untouched.
 
-Stage implementations (INPUT, MEDIA_PREP, OCR, ...) are supplied by later work packages through a registry.
+Stage implementations (INPUT, MEDIA_PREP, OCR, ...) are supplied through a registry (upgrade.stage_registry).
 A build without an implementation for a required stage fails that request with STAGE_UNAVAILABLE.
 """
 
@@ -321,8 +321,12 @@ class StageContext:
     emit: EventSink
     owner_token: str
     outputs: dict[str, dict] = field(default_factory=dict)
+    attempt_id: str = ""                                     # id of the attempt currently being produced
+    scratch: dict[str, Any] = field(default_factory=dict)    # per-request memo shared by stage implementations (never persisted)
 
     def output_dir(self, stage: str) -> Path:
+        if stage not in self.outputs:
+            raise ContractError("STAGE_FAILED", f"stage {stage} has no committed output in this run", details={"stage": stage})
         return self.outputs[stage]["dir"]
 
     def check_cancelled(self) -> None:
@@ -339,7 +343,11 @@ class StageImpl(Protocol):
 
 
 def stage_signature(name: str, request: dict, inputs: dict) -> str:
-    return signature({"stage": name, "stage_version": STAGE_VERSIONS[name], "request_fingerprint": request["request_fingerprint"], "inputs": inputs})
+    """Cache signature of one stage (plan 10.3). It covers the stage, its algorithm version and the dependencies the
+    implementation declares (content identities, parameters, tool identities, upstream signatures). The request
+    fingerprint is deliberately not part of it: changing e.g. timing_mode or a translation parameter must not
+    re-run OCR/ASR. The ``request`` parameter is kept so existing callers do not change."""
+    return signature({"stage": name, "stage_version": STAGE_VERSIONS[name], "inputs": inputs})
 
 
 class QueueRunner:
@@ -500,6 +508,7 @@ class QueueRunner:
         _save_task(run, task)
         ctx.emit({"event": "stage_started", "stage": name, "attempt_id": attempt_id, "attempt": len(stage["attempts"])})
         ctx.attempt_dir = pending
+        ctx.attempt_id = attempt_id
         try:
             validation = impl.run(ctx)
             ctx.check_cancelled()

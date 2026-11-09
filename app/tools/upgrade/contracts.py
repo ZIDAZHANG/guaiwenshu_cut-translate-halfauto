@@ -324,6 +324,30 @@ RECORDS: dict[str, dict[str, F]] = {
         "roi": _rec("ROI"), "events": _list(record="VisualEvent"), "raw_refs": _list(record="ArtifactRef"),
         "evidence_level": _str(enum=("interval_only", "frame_supported", "scored_frames")), "extensions": F("object"),
     },
+    # ---- 7.3 derived media (ASR WAV / review-compatible video) and the per-media registry manifest (W03)
+    "Derivation": {
+        "schema_version": F("int"), "source_media_id": _uuid(), "source_stream": F("int", min=0), "origin_offset_ms": F("int", doc="stream start minus video origin; may be negative"),
+        "trim_before_ms": _ms(), "pad_before_ms": _ms(), "pad_after_ms": _ms(), "output_duration_ms": _ms(), "ffmpeg_ref": _rec("ResourceRef"),
+        "argv_ref": _rec("ArtifactRef"), "extensions": F("object"),
+    },
+    "MediaManifest": {
+        "schema_version": F("int"), "kind": _str(enum=("registration", "derived", "download")), "media_id": _uuid(nullable=True),
+        "media_revision": _str(nullable=True), "signature": _sha(nullable=True), "outputs": _list(record="ArtifactRef"), "committed_at": _utc(),
+        "extensions": F("object"),
+    },
+    # ---- 6.8 module requests (in-memory; runtime handles such as cancel tokens are injected, never serialized)
+    "MediaInput": {
+        "input": _rec("JobInput"), "selected_video_stream": F("int", nullable=True, min=0), "selected_audio_stream": F("int", nullable=True, min=0),
+        "project_id": _uuid(), "extensions": F("object"),
+    },
+    "MediaPlan": {
+        "media_id": _uuid(), "needs_visual": F("bool"), "needs_audio": F("bool"), "compatibility_profile": _str(nonempty=True),
+        "run_id": _uuid(), "attempt_id": _uuid(), "extensions": F("object"),
+    },
+    "RecognitionRequest": {
+        "run_id": _uuid(), "media_id": _uuid(), "recognition_mode": _str(enum=RECOGNITION_MODES), "video_artifact": F("object", nullable=True),
+        "audio_artifact": F("object", nullable=True), "roi": _rec("ROI"), "engine_settings": F("object"), "resource_refs": _list(record="ResourceRef"),
+    },
     # ---- 6.5 source, translation, quality
     "SourceRange": {"parent_id": _str(nonempty=True), "char_start": F("int", min=0), "char_end": F("int", min=0)},
     "Segment": {
@@ -484,6 +508,25 @@ def _check_interval_like(value: dict) -> list[str]:
         return []
 
 
+def _check_file_ref(value: Any, label: str) -> list[str]:
+    if value is None:
+        return []
+    kind = "ExternalFileRef" if isinstance(value, dict) and "absolute_path" in value else "ArtifactRef"
+    problems: list[str] = []
+    _validate_record(kind, value, label, problems, root=False)
+    return problems
+
+
+def _check_recognition_request(value: dict) -> list[str]:
+    problems = _check_file_ref(value.get("video_artifact"), "video_artifact") + _check_file_ref(value.get("audio_artifact"), "audio_artifact")
+    mode = value.get("recognition_mode")
+    if mode in ("combined", "visual_only") and value.get("video_artifact") is None:
+        problems.append(f"{mode} needs video_artifact")
+    if mode in ("combined", "speech_only") and value.get("audio_artifact") is None:
+        problems.append(f"{mode} needs audio_artifact")
+    return problems
+
+
 def _check_operation_result(value: dict) -> list[str]:
     if value.get("error") is not None and value.get("ok") is not False:
         return ["ok must be false when error is present"]
@@ -500,6 +543,7 @@ RECORD_CHECKS: dict[str, Callable[[dict], list[str]]] = {
     "MediaRecord": _check_media_record, "ROI": _check_roi, "Word": _check_word, "Interval": _check_interval_like,
     "Parent": _check_interval_like, "Segment": _check_interval_like, "VisualEvent": _check_interval_like,
     "OperationResult": _check_operation_result, "ErrorObject": _check_error_object,
+    "RecognitionRequest": _check_recognition_request,
 }
 
 SENSITIVE_KEY_RE = re.compile(r"(?:api[_-]?key|token|secret|password|passwd|authorization|cookie|credential)", re.IGNORECASE)

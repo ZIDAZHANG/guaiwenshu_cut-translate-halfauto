@@ -43,7 +43,9 @@ LEGACY_BUILTIN_TEMPLATES: dict[str, str] = {
 }
 LEGACY_TRANSLATION_KEYS = ("endpoint", "gpu_layers", "context_size", "workers", "batch_size", "temperature", "top_p",
                            "use_native_dictionaries", "native_prompt_mode", "engine", "enabled")
-LEGACY_RECOGNITION_KEYS = ("engine", "enabled", "language", "vad", "word_timestamps")
+LEGACY_RECOGNITION_KEYS = ("engine", "enabled", "language", "vad", "word_timestamps", "dtw_model")
+LEGACY_BROWSERS = {"Edge": "edge", "Chrome": "chrome", "Firefox": "firefox"}
+LEGACY_YOUTUBE_CLIENTS = {"Android VR": "android_vr", "TV": "tv"}
 LEGACY_AXIS_KEYS = ("enabled", "strategy", "preset", "engine", "max_resolution", "ocr")
 
 
@@ -212,6 +214,21 @@ def migrate_legacy_config(legacy: dict, *, data_root: str | Path, ascii_temp_roo
     if legacy.get("proxy"):
         engine["download"]["proxy"] = legacy["proxy"]
     consumed.add("proxy")
+    downloads = legacy.get("download_settings") if isinstance(legacy.get("download_settings"), dict) else {}
+    if downloads.get("quality"):
+        engine["download"]["quality"] = downloads["quality"]
+    # an explicit legacy choice to log in through a browser profile is kept as a choice; no cookie content is ever stored
+    browser = LEGACY_BROWSERS.get(str(downloads.get("cookies_from_browser", "")).strip())
+    if browser:
+        engine["download"]["browser_login_source"] = browser
+    if str(downloads.get("js_runtime", "")).strip():
+        engine["download"]["js_runtime"] = str(downloads["js_runtime"]).strip()
+    client = LEGACY_YOUTUBE_CLIENTS.get(str(downloads.get("youtube_client", "")).strip())
+    if client:
+        engine["download"]["youtube_client"] = client
+    if downloads:
+        report["mapped"].append("download_settings -> download {quality, browser_login_source, js_runtime, youtube_client}")
+    consumed.add("download_settings")
 
     tools = legacy.get("tools") if isinstance(legacy.get("tools"), dict) else {}
     for key in ("ffmpeg", "yt_dlp", "axis_generator", "jp_recognizer", "machine_translator"):

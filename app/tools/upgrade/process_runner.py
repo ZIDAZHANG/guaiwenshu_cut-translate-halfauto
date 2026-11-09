@@ -209,6 +209,18 @@ class ProcessHandle:
     def poll(self) -> int | None:
         return self.process.poll() if self.process else None
 
+    def send_stdin(self, data: bytes, *, close: bool = True) -> None:
+        """Write once to the child's stdin (needs stdin_mode=pipe). A child that already exited is not an error."""
+        if not self.process or self.process.stdin is None:
+            raise ContractError("PROCESS_FAILED", "stdin is not a pipe for this process", details={"stdin_mode": self.spec["stdin_mode"]})
+        try:
+            self.process.stdin.write(data)
+            self.process.stdin.flush()
+            if close:
+                self.process.stdin.close()
+        except (OSError, ValueError):
+            pass
+
     def wait(self, *, poll_seconds: float = POLL_SECONDS) -> dict:
         """Wait for exit or cancellation; returns a ProcessResult."""
         assert self.process is not None, "start() first"

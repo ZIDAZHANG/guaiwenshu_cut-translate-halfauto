@@ -142,6 +142,7 @@ class ImportIsolationTests(unittest.TestCase):
     def test_v2_modules_do_not_import_heavy_or_gui_packages(self):
         code = ("import sys, json\n"
                 "import upgrade.contracts, upgrade.config, upgrade.storage, upgrade.resource_catalog, upgrade.cli\n"
+                "import upgrade.media, upgrade.recognition, upgrade.stages, upgrade.stage_registry\n"
                 "forbidden = ['torch', 'paddle', 'qwen_asr', 'pywinauto', 'tkinter', 'win32gui', 'PIL', 'yaml']\n"
                 "print(json.dumps(sorted(m for m in forbidden if m in sys.modules)))\n")
         completed = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=os.environ.copy())

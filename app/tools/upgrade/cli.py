@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """v2 command-line entry (plan 1.1, section 12.1). Development form: ``python -m upgrade.cli``; frozen form: ``roast.exe``.
 
-W01 implements the resource/config commands. Every command prints one OperationResult JSON object on stdout,
+Every command prints one OperationResult JSON object on stdout (``worker`` is the internal exception: it runs a bundled module),
 writes logs to stderr and exits with the fixed codes: 0 ok, 2 arguments/config, 3 resources/media,
 4 process failure, 5 data/identity, 6 cancelled, 7 exclusive-lock conflict.
 """
@@ -160,11 +160,18 @@ def cmd_submit(args: argparse.Namespace) -> int:
         raise ContractError("NEEDS_SELECTION", "--source-revision is only valid with --mode supplied_source")
     if args.timing_mode and args.mode != "combined":
         raise ContractError("NEEDS_SELECTION", "--timing-mode only applies to --mode combined (speech_only=speech, visual_only=screen are fixed)")
+    video_stream, audio_stream, warnings = _parse_stream(args.video_stream), _parse_stream(args.audio_stream), []
     if args.video:
         video = Path(args.video)
         if not video.is_file():
             raise ContractError("INPUT_MISSING", f"video file not found: {video}", details={"path": str(video)})
         input_kind, input_value, default_name = "local_video", str(video.resolve()), video.stem
+        from upgrade.stages import preflight_streams
+        checked = preflight_streams(config, {"config_snapshot": {"engine_settings": engine}, "resource_refs": []}, video.resolve(), mode=args.mode,
+                                    video_stream=video_stream, audio_stream=audio_stream, audio_none=args.audio_stream == "none")
+        video_stream, audio_stream = checked["video_stream"], checked["audio_stream"]
+        if checked["warning"]:
+            warnings.append(checked["warning"])
     elif args.url:
         input_kind, input_value, default_name = "url", args.url, args.url
     else:
@@ -173,7 +180,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         input_kind, input_value, default_name = "local_video", "supplied-source", args.project
     request = build_job_request(
         config, engine, input_kind=input_kind, input_value=input_value, recognition_mode=args.mode, timing_mode=args.timing_mode,
-        project_id=args.project, video_stream_index=_parse_stream(args.video_stream), audio_stream_index=_parse_stream(args.audio_stream),
+        project_id=args.project, video_stream_index=video_stream, audio_stream_index=audio_stream,
         source_revision_id=args.source_revision, dictionary_revision_id="none", resource_refs=_resource_refs_for(config),
         accepted_dictionary_warnings=["accepted"] if args.accept_dictionary_warnings else [],
     )
@@ -183,7 +190,8 @@ def cmd_submit(args: argparse.Namespace) -> int:
         request["extensions"]["copy_original"] = True
     envelope = submit(config["data_root"], request, display_name=args.display_name or default_name)
     _emit(_result("submit", ok=True, ids={"project_id": request["project_id"], "request_id": request["request_id"], "status": envelope["status"],
-                                           "duplicate": envelope["request"]["request_id"] == request["request_id"] and envelope["created_at"] != request["created_at"]}))
+                                           "duplicate": envelope["request"]["request_id"] == request["request_id"] and envelope["created_at"] != request["created_at"]},
+                  warnings=warnings))
     return EXIT_OK
 
 
@@ -327,7 +335,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def run_worker(argv: list[str]) -> int:
+    """Internal worker entry (plan 12.3): ``roast worker NAME ARGS...`` runs a bundled module in its own owned process."""
+    if argv and argv[0] == "yt-dlp":
+        try:
+            import yt_dlp
+        except ImportError as exc:
+            _emit(_result("worker.yt-dlp", ok=False, error=ContractError("CAPABILITY_MISSING", f"yt-dlp is not installed in this runtime: {exc}")))
+            return EXIT_RESOURCE
+        yt_dlp.main(argv[1:])  # exits the process with yt-dlp's own exit code
+        return EXIT_OK
+    _emit(_result("worker", ok=False, error=ContractError("NEEDS_SELECTION", f"unknown worker {argv[:1]}", details={"supported": ["yt-dlp"]})))
+    return EXIT_ARGS
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv[:1] == ["worker"]:
+        return run_worker(argv[1:])
     parser = build_parser()
     try:
         args = parser.parse_args(argv)

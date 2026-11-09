@@ -2,7 +2,7 @@
   "schema_version": 2,
   "record_kind": "validation_ledger",
   "plan_section": "14.5",
-  "updated_at": "2026-11-08T12:57:19Z",
+  "updated_at": "2026-11-09T16:06:05Z",
   "entries": [
     {
       "test_id": "LEGACY-22-NOYAML",
@@ -97,6 +97,81 @@
       "remaining_limitations": "合成阶段与 python 子进程代替真实引擎；CTRL_BREAK 优雅退出请求对无控制台子进程无效，依赖 3 秒宽限后的 Job Object 终止；跨机器/网络盘不在范围"
     },
     {
+      "test_id": "T03-W03",
+      "requirement_ids": [
+        "FR02",
+        "FR03",
+        "FR12",
+        "FR16"
+      ],
+      "build_sha": "W03 working tree on top of 37e973a (see completion-W03.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "3957ff77b06d4587ca9561f3ff8f2634bee386679713df2ef74a2074b39c0b5e",
+      "input_hashes": {},
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-09T16:06:05Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_media_test.py",
+        "tests/upgrade_recognition_test.py",
+        "tests/support/w03.py",
+        "LOCAL_WORKSPACE/roast-w03-tests-summary.json"
+      ],
+      "observed": "时钟夹具 11 用例 + 识别适配器 16 用例 PASS。时钟：round_half_up 用整数/Fraction（含超出 float 精度的值）；t_ms 以首个呈现视频帧为 0；未知 time_base/start_time 保持未知；包时间线表（CFR、毫秒刻度的 33/34、VFR、B 帧重排、discard 包、单帧）；缺 PTS→MEDIA_CLOCK_UNKNOWN、DTS 回跳/重复 PTS→MEDIA_CLOCK_DISCONTINUITY；片尾按 末帧+时长→流时长→容器时长 取值，取不到不估算；选流表（封面图不算视频流、多视频/多音轨 NEEDS_SELECTION、none、错误序号）；逐帧映射比较拒绝丢帧/漂移/起点不为 0；直用判定与 HDR/杜比视界/立体标记。识别：Whisper 命令行与旧适配器逐项一致且为单一 argv；引擎只看到 ASCII 路径；原始 SRT/JSON/日志与规范证据同在并有哈希；字符范围是 code point；VAD 时钟冲突只重跑一次、去掉 VAD、同音频同模型、两次都留证；恢复失败或恒冲突时保留父句时间并标 WORD_CLOCK_REJECTED、不插值；无 VAD 不循环；非零退出/JSON 损坏不接收残留 SRT；空结果是 ASR_EMPTY 警示；无分数为 null 且只报一次；缺 VAD 资源/非 ASCII 模型路径/未知模型缺 dtw 设置在启动前报错。Magia：区间+文字→interval_only、score/boxes/frame_refs 不造；占位文本记空并标 ENGINE_PLACEHOLDER_TEXT；dialogRect 顺序 [left,right,top,bottom]；ASCII 逐任务配置；stdin 回车；原始 ASS 字节保留、规范副本另存；无画面文字→显式 EMPTY；非零退出/无输出/非法时间不产生证据；ACP 编码输出无损解码；combined 先 OCR 后 ASR 串行、两类文字互不覆盖；supplied_source 两者都不运行并给出 USER_SOURCE",
+      "expected": "计划 W03 验收中 T03 的识别/时钟 fixture 部分",
+      "remaining_limitations": "两个识别引擎的进程启动被替身代替（替身写出引擎形态的输出），只证明适配协议，不证明真实引擎的输出格式与准确性。未在真实二进制上确认的假设：whisper-cli 无语音时写出空 SRT 与 transcription=[]；-ojf JSON 的 token 含 p 字段；MagiaTimeline 无画面文字时写出没有 Dialogue 的 ASS。S04 的真实保存输出不在执行机（ENV-02）。留 W09 在真实引擎上一次确认"
+    },
+    {
+      "test_id": "T06-W03",
+      "requirement_ids": [
+        "FR01",
+        "FR02",
+        "FR12",
+        "FR16"
+      ],
+      "build_sha": "W03 working tree on top of 37e973a (see completion-W03.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "3957ff77b06d4587ca9561f3ff8f2634bee386679713df2ef74a2074b39c0b5e",
+      "input_hashes": {
+        "ffmpeg_exe_sha256": "2f14bb2fb8df3d54728fed45b5f6b84fce26e30b217e820e6e97fc5688b1a0d2",
+        "ffprobe_exe_sha256": "2da5b980a9a14a808f423d181c4ed51c2b8af11b1366699f3f7eab0609926f8f"
+      },
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-09T16:06:05Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_media_test.py",
+        "tests/upgrade_stages_test.py",
+        "tests/support/w03.py",
+        "LOCAL_WORKSPACE/roast-w03-tests-summary.json"
+      ],
+      "observed": "真实 ffmpeg（2024-09-26 gyan essentials）+ 真实 ffprobe（2022-04-07 gyan full）在测试现场生成的 S05 素材上：媒体 13 用例 + 队列级 9 用例 PASS。常规 H.264 MP4 直接使用、同内容换路径仍是同一 media_id、原文件哈希不变；非零起点 MKV（视频 1.5 s、无损音频 1.0 s / 2.0 s）：origin_pts=1500、时长 3000 ms，派生视频 90 帧逐帧一致且首帧为 0，ASR WAV 的提示音起点落在 500 ms / 1500 ms（±3 ms），trim/pad 与 derivation.json 一致；VFR MP4：89 帧逐帧毫秒一致（间隔仍为 23/43 ms，未强制帧率），1 个 discard 包不计入；无末帧时长的 VFR MKV→MEDIA_CLOCK_UNKNOWN 且不派生；旋转 90°：派生 240×320、旋转元数据清除；无音轨：不生成 WAV，语音模式报 NEEDS_SELECTION；双音轨：必须显式选择，换音轨产生新 WAV 而画面识别身份不变；字节拼接的 TS→MEDIA_CLOCK_DISCONTINUITY 且原文件不动；标记为 PQ 的素材→MEDIA_PROFILE_UNSUPPORTED 且不启动转换；奇数尺寸 321×241→右/下各补 1 px；源文件被改写→MEDIA_CHANGED，只改时间戳→重新哈希后接受，文件不见→INPUT_MISSING；copy_original 指向项目内副本；关闭自动转换→明确停止。队列级：四种模式的 skip 规则（MODE / USER_SOURCE）与引擎启动次数；无音轨的语音模式不静默改模式；时钟不可验证停在 MEDIA_PREP；缺引擎在 INPUT 一次点名全部缺失角色、未探测未派生，补登记后 resume 同一 run 新 attempt；资源内容变化→RESOURCE_CHANGED；换 timing_mode / 换模式复用 OCR、ASR 证据（引擎启动次数不变），换 OCR 区域只重跑 OCR；CLI submit 的选流预检（多音轨/无音轨→退出码 2）与 queue run 使用真实阶段注册表",
+      "expected": "计划 W03 验收中 T06 的媒体小素材部分（S05）",
+      "remaining_limitations": "S05 是合成图像与提示音，只证明时钟与确定性，不代表真实影视素材；ffmpeg 与 ffprobe 不是同一发布版本；未用计划引用的 FFmpeg n7.1 构建复跑；HDR 素材是给 SDR 像素打 PQ 标记，不是真实 HDR；未覆盖 AVI 等包级无 PTS 的容器（按规则应为 MEDIA_CLOCK_UNKNOWN，仅有合成包表验证）；音频只校验起点与总长，未检查音轨中途的不连续；导出相关（S06、字幕实帧、MKV 字幕轨、缺字体）属 W07"
+    },
+    {
+      "test_id": "FR01-URL-W03",
+      "requirement_ids": [
+        "FR01"
+      ],
+      "build_sha": "W03 working tree on top of 37e973a (see completion-W03.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "3957ff77b06d4587ca9561f3ff8f2634bee386679713df2ef74a2074b39c0b5e",
+      "input_hashes": {
+        "ffmpeg_exe_sha256": "2f14bb2fb8df3d54728fed45b5f6b84fce26e30b217e820e6e97fc5688b1a0d2",
+        "ffprobe_exe_sha256": "2da5b980a9a14a808f423d181c4ed51c2b8af11b1366699f3f7eab0609926f8f"
+      },
+      "evidence_kind": "real_http",
+      "executed_at": "2026-11-09T16:06:05Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_stages_test.py"
+      ],
+      "observed": "本机回环 HTTP 服务器提供一个 MP4；队列里的 url 请求由真实 yt-dlp 2026.7.4（作为自有 worker 进程）下载到项目的 media/downloads/<id>/，提交 manifest（含 video.info.json 与实际文件），源文件哈希与原片一致，随后按本地文件探测并进入后续阶段；argv 含 --no-playlist，URL 是单一 argv 元素",
+      "expected": "计划 7.1：URL 由 yt-dlp 获取到本项目目录，保留 info JSON 与实际下载文件身份，固定 --no-playlist",
+      "remaining_limitations": "只验证了直链（generic extractor）与回环网络；没有访问任何真实视频站点，站点提取器、代理、登录、播放列表 URL 的行为未实测；下载失败后改用本地文件的路径只体现在错误信息里"
+    },
+    {
       "test_id": "T03",
       "requirement_ids": [
         "FR02",
@@ -115,7 +190,7 @@
       "evidence_paths": [],
       "observed": "",
       "expected": "",
-      "remaining_limitations": "W03/W04/W06 实施后运行；v8 frozen evidence 需从旧测试夹具建立"
+      "remaining_limitations": "整组仍为 NOT_RUN：W03 负责的识别/时钟夹具部分见 T03-W03（PASS）；分段契约（v8 frozen evidence）属 W04，质量规则表属 W06"
     },
     {
       "test_id": "T04",
@@ -172,7 +247,7 @@
       "evidence_paths": [],
       "observed": "",
       "expected": "",
-      "remaining_limitations": "W03/W07 实施后运行；需要 ffprobe（执行机缺失，B01）"
+      "remaining_limitations": "整组仍为 NOT_RUN：W03 负责的媒体部分见 T06-W03（PASS）；导出部分（MP4 字幕实帧、MKV 字幕轨、缺字体、S06）属 W07"
     },
     {
       "test_id": "T07",

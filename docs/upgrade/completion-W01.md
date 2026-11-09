@@ -27,7 +27,7 @@
 | `app/tools/upgrade/storage.py` | DATA_ROOT/项目目录布局、写入探测、网络盘拒绝、`safe_join`（realpath 越界检查）、原子小文件写、`.pending/` → 一次性 `rename` 的不可变提交原语、`verify_committed`（ARTIFACT_CHANGED） |
 | `app/tools/upgrade/resource_catalog.py` | 资源声明读写、`inspect_resources`、`resolve_resource`、`require_resources`、`register_resource`、`rebind_resource`、大文件哈希缓存（size+mtime 加速，报告中说明边界）、版本/帮助探针、legacy `tool_discovery` 只用于建议 |
 | `app/tools/upgrade/cli.py` | 上表命令；stdout 一份 OperationResult JSON，stderr 日志 |
-| `schemas/*.schema.json`（43 文件 + index） | 由 `scripts/export_schemas.py` 从 contracts 导出；`--check` 可验证一致 |
+| `schemas/*.schema.json`（50 文件 + index；原文误写为 43，W03 更正） | 由 `scripts/export_schemas.py` 从 contracts 导出；`--check` 可验证一致 |
 | `tests/upgrade_*_test.py`（3 文件，29 用例） | T01 |
 | `requirements-core.txt`、`requirements-legacy.txt`、`requirements-dev.txt`、`requirements.txt` | 依赖分组；PyYAML 显式声明；全量 `requirements.txt` 兼容旧文档 |
 | `build/roast-onedir.spec` | one-dir、UPX 关闭、`roast.exe` + `roast-gui.exe` 共享 `_internal`；排除 torch/paddle/qwen；NOT_RUN |

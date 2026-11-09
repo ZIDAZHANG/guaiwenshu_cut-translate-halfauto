@@ -52,7 +52,7 @@
       "resource_id": "ffmpeg.gyan.2024-09-26.essentials",
       "kind": "ffmpeg",
       "present": true,
-      "role": "available_for_W01_probe",
+      "role": "used_for_W03_media_fixtures",
       "absolute_path": "EXTERNAL_TOOLS_ROOT/GalTransl-ASMR-20241110-NVIDIA(1)/app/_internal/ffmpeg.exe",
       "version_text": "ffmpeg version 2024-09-26-git-f43916e217-essentials_build-www.gyan.dev",
       "upstream_url": "https://www.gyan.dev/ffmpeg/builds/",
@@ -80,37 +80,82 @@
       "license_note": "gyan.dev essentials 构建为 GPL；不捆绑",
       "inspected_at": "2026-11-08T12:20:18Z",
       "extensions": {
-        "source": "GalTransl-ASMR 20241110 整合包内置；-version 探针成功"
+        "source": "GalTransl-ASMR 20241110 整合包内置；-version 探针成功",
+        "w03": "-encoders 探针确认含 libx264；-fps_mode、-enc_time_base、setts 位流滤镜可用（T06-W03 实测）"
       }
     },
     {
-      "resource_id": "ffprobe.required",
+      "resource_id": "ffprobe.gyan.2022-04-07.full",
       "kind": "ffprobe",
-      "present": false,
-      "role": "required_by_plan_7.1",
-      "absolute_path": null,
-      "version_text": null,
+      "present": true,
+      "role": "used_for_W03_media_fixtures",
+      "absolute_path": "EXTERNAL_TOOLS_ROOT/GPT-SoVITS/runtime/ffprobe.exe",
+      "version_text": "ffprobe version 2022-04-07-git-607ecc27ed-full_build-www.gyan.dev",
       "upstream_url": "https://www.gyan.dev/ffmpeg/builds/",
-      "upstream_revision": null,
-      "content_sha256": null,
-      "files": [],
+      "upstream_revision": "git-607ecc27ed",
+      "content_sha256": "2da5b980a9a14a808f423d181c4ed51c2b8af11b1366699f3f7eab0609926f8f",
+      "files": [
+        {
+          "path": "ffprobe.exe",
+          "sha256": "2da5b980a9a14a808f423d181c4ed51c2b8af11b1366699f3f7eab0609926f8f",
+          "bytes": 122135040
+        }
+      ],
       "capabilities": {
-        "cpu": "not_applicable",
+        "cpu": true,
         "gpu_vulkan": "not_applicable",
         "gpu_cuda": "not_applicable",
         "word_timestamps": "not_applicable",
         "vad": "not_applicable",
         "ocr_scores": "not_applicable",
-        "frame_pts": "not_applicable",
+        "frame_pts": true,
         "libass": "not_applicable",
-        "json_probe": "unknown"
+        "json_probe": true
+      },
+      "license_status": "recorded",
+      "license_note": "gyan.dev full 构建（--enable-gpl --enable-version3）；不捆绑",
+      "inspected_at": "2026-11-09T16:06:05Z",
+      "extensions": {
+        "source": "GPT-SoVITS 整合包 runtime 目录内置",
+        "correction": "W00 把 ffprobe 登记为缺失：当时只查了 PATH 和已登记 FFmpeg 的同目录。W03 重新清点发现本条。只读使用，未复制、未改动该目录",
+        "version_note": "与本机使用的 ffmpeg（2024-09-26）不是同一发布；T06-W03 用这一对执行。交付时由负责人确定正式的 ffmpeg/ffprobe 来源（B01 中 ffprobe 一项缩小为“选定正式来源”）",
+        "capability_evidence": "json_probe / frame_pts 来自 W03 实测：-show_format -show_streams、-show_entries packet=…、-show_frames 均返回 JSON 与 PTS"
+      }
+    },
+    {
+      "resource_id": "ffmpeg.n4.3.2.gpt-sovits",
+      "kind": "ffmpeg",
+      "present": true,
+      "role": "registered_not_used",
+      "absolute_path": "EXTERNAL_TOOLS_ROOT/GPT-SoVITS/runtime/ffmpeg.exe",
+      "version_text": "ffmpeg version n4.3.2-160-gfbb9368226",
+      "upstream_url": null,
+      "upstream_revision": "n4.3.2-160-gfbb9368226",
+      "content_sha256": "b6a4d917a444790f4c06ada640c1c0c95aecde2f8953ed8d0dfb19352500bfcd",
+      "files": [
+        {
+          "path": "ffmpeg.exe",
+          "sha256": "b6a4d917a444790f4c06ada640c1c0c95aecde2f8953ed8d0dfb19352500bfcd",
+          "bytes": 52925440
+        }
+      ],
+      "capabilities": {
+        "cpu": true,
+        "gpu_vulkan": "not_applicable",
+        "gpu_cuda": "not_applicable",
+        "word_timestamps": "not_applicable",
+        "vad": "not_applicable",
+        "ocr_scores": "not_applicable",
+        "frame_pts": "unknown",
+        "libass": true,
+        "json_probe": "not_applicable"
       },
       "license_status": "unresolved",
       "license_note": null,
-      "inspected_at": "2026-11-08T12:20:18Z",
+      "inspected_at": "2026-11-09T16:06:05Z",
       "extensions": {
-        "missing_reason": "PATH 与已发现 FFmpeg 同目录均无 ffprobe.exe",
-        "blocker": "B01"
+        "source": "GPT-SoVITS 整合包 runtime 目录内置",
+        "not_used_reason": "构建配置含 --disable-libx264，且早于 5.1（没有 -fps_mode）；不能生成复核/识别兼容视频，只登记"
       }
     },
     {
@@ -570,5 +615,7 @@
     "EXTERNAL_TOOLS_ROOT": "执行机外部软件/模型根目录",
     "LOCAL_WORKSPACE": "执行机工作区",
     "USER_HOME": "执行机用户目录"
-  }
+  },
+  "updated_by": "W03",
+  "updated_at": "2026-11-09T16:06:05Z"
 }

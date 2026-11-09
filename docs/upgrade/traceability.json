@@ -297,7 +297,9 @@
         "T03",
         "T06"
       ],
-      "status": "NOT_STARTED"
+      "status": "COMPLETED",
+      "completion_record": "docs/upgrade/completion-W03.md",
+      "note": "T03 的识别/时钟夹具部分与 T06 的媒体部分 PASS；真实 Whisper/Magia 引擎的整体验证按计划留 W09（执行机缺引擎，B01）"
     },
     "W04": {
       "title": "主记录、词典、翻译和机器字幕",

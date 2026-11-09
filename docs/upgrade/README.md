@@ -16,6 +16,7 @@
 | `requirements-lock-dev-3.10.txt` | 3.10 开发 venv 的 pip freeze（无哈希） | W01 |
 | `completion-W01.md` | W01 完成报告 | W01 |
 | `completion-W02.md` | W02 完成报告 | W02 |
+| `completion-W03.md` | W03 完成报告（媒体时钟、派生媒体、两类识别接入） | W03 |
 
 不入库的私有快照（`.gitignore` 排除 `*.private.json`）：`effective-config.private.json`、`resources-inventory.private.json`，保存执行机的实际绝对路径。
 

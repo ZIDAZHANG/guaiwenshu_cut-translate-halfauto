@@ -146,7 +146,14 @@ class ConfigTests(unittest.TestCase):
         legacy["weird_old_key"] = {"a": 1}
         legacy["tools"]["ffmpeg"] = "D:/tools/ffmpeg.exe"
         legacy["secret_token"] = "abc"
+        legacy["proxy"] = "http://127.0.0.1:7890"
+        legacy["download_settings"] = {"quality": "最高 1080p", "cookies_from_browser": "Edge", "js_runtime": "", "youtube_client": "TV"}
         migrated = migrate_legacy_config(legacy, data_root="X:/data")
+        # download choices are kept as explicit settings; the engine settings never hold a cookie-named key or cookie content
+        self.assertEqual(migrated["engine_settings"]["download"], {"proxy": "http://127.0.0.1:7890", "quality": "最高 1080p",
+                                                                   "browser_login_source": "edge", "youtube_client": "tv"})
+        self.assertEqual(c.find_sensitive_keys(migrated["engine_settings"]), [])
+        self.assertNotIn("download_settings", migrated["app_config"]["extensions"]["legacy_extra"])
         config = migrated["app_config"]
         self.assertEqual(c.validate_record("AppConfig", config), [])
         self.assertEqual(config["defaults"]["timing_mode"], "speech")
