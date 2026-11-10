@@ -409,8 +409,41 @@ RECORDS: dict[str, dict[str, F]] = {
         "schema_version": F("int"), "revision_id": _uuid(), "project_id": _uuid(), "media_id": _uuid(), "base_revision_id": _uuid(nullable=True), "session_id": _uuid(nullable=True),
         "original_file_ref": _rec("ArtifactRef"), "validated_view_ref": _rec("ArtifactRef"), "format": _str(enum=SUBTITLE_FORMATS), "encoding": _str(nonempty=True),
         "provenance_status": _str(enum=PROVENANCE), "correspondences_ref": _rec("ArtifactRef"), "quality_ref": _rec("ArtifactRef"), "created_at": _utc(),
+        "extensions": F("object"),
     },
     "Correspondence": {"edited_cue_ordinal": F("int", min=0), "source_cue_ids": _list(item=_str()), "mapping_status": _str(enum=("exact", "candidate", "unmapped")), "reason": _str()},
+    # ---- W05: the file correspondences_ref points to, the read-only parsed view of a human file (plan 6.7 / 9.2 step 3)
+    #      and what resolve_revision returns (plan 6.8: "the hash-verified concrete revision and its file refs").
+    "CorrespondenceSet": {
+        "schema_version": F("int"), "revision_id": _uuid(), "base_revision_id": _uuid(nullable=True), "base_format": _str(nullable=True, enum=SUBTITLE_FORMATS),
+        "base_subtitle_sha256": _sha(nullable=True), "edited_format": _str(enum=SUBTITLE_FORMATS), "correspondences": _list(record="Correspondence"),
+        "summary": F("object"), "extensions": F("object"),
+    },
+    "ViewCue": {
+        "ordinal": F("int", min=0), "cue_id": _str(nonempty=True), "kind": _str(enum=("dialogue", "comment")), "line": F("int", min=1),
+        "start_ms": F("int", nullable=True, doc="None when the time is not a canonical value (QC02); never corrected"), "end_ms": F("int", nullable=True),
+        "text": _str(doc="display text: SRT lines joined by LF; ASS with override blocks removed"), "fields": F("object", doc="ASS: every Format field by name, Text raw"),
+        "layer": F("int", nullable=True), "style": _str(nullable=True), "name": _str(nullable=True), "drawing": F("bool"), "notes": F("object"),
+    },
+    "SubtitleView": {
+        "schema_version": F("int"), "format": _str(enum=SUBTITLE_FORMATS), "encoding": _str(nonempty=True), "encoding_source": _str(enum=("bom", "utf-8", "user")),
+        "sha256": _sha(doc="of the original bytes this view was read from"), "bytes": F("int", min=0), "newlines": F("object"), "cues": _list(record="ViewCue"),
+        "styles": _list(item=F("object")), "script_info": F("object"), "sections": _list(item=F("object")), "problems": _list(item=F("object")), "extensions": F("object"),
+    },
+    # In-memory only; subtitle_files maps a format to a project-relative ArtifactRef, confirmations maps a format to
+    # {subtitle_sha256, human_status, confirmed_scopes, attestation_ids} (the union of the attestations of those exact bytes).
+    "ResolvedRevision": {
+        "kind": _str(enum=("machine", "source", "review")), "revision_id": _uuid(), "project_id": _uuid(), "media_id": _uuid(), "directory": _rel(),
+        "manifest": F("object"), "subtitle_files": F("object"), "confirmations": F("object"), "notices": _list(item=F("any")),
+    },
+    # In-memory input of quality.check_quality (plan 6.8). revision_kind and extensions are additions: the rules differ for
+    # machine and human files, and the review-base facts (QC20) are computed by revisions before the check runs.
+    "QualityInput": {
+        "revision_id": _uuid(), "revision_kind": _str(enum=("machine", "source", "review")), "media_record": F("object", nullable=True),
+        "subtitle_ref": _rec("ArtifactRef"), "parsed_view": _rec("SubtitleView"), "source_revision": F("object", nullable=True),
+        "recognition_refs": _list(record="ArtifactRef"), "translation_ref": _rec("ArtifactRef", nullable=True), "rule_config": _rec("QualityConfig"),
+        "attestations": _list(record="Attestation"), "extensions": F("object"),
+    },
     "Attestation": {
         "schema_version": F("int"), "attestation_id": _uuid(), "revision_id": _uuid(), "subtitle_sha256": _sha(), "media_id": _uuid(),
         "scopes": _list(item=_str(enum=SCOPES), nonempty=True), "actor": _str(enum=("user",)), "created_at": _utc(), "note": _str(),
