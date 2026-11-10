@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from upgrade import media, recognition, source as source_module, subtitles, translation
+from upgrade import media, quality as quality_module, recognition, source as source_module, subtitles, translation
 from upgrade.contracts import SCHEMA_VERSION, ContractError, load_record, new_id, parse_json_text, require_record, sha256_file, sha256_text, utc_now
 from upgrade.resource_catalog import inspect_resources, resolve_resource
 from upgrade.runner import StageContext, stage_signature, update_project
@@ -34,8 +34,8 @@ SPEECH_MODES = ("combined", "speech_only")
 VISUAL_MODES = ("combined", "visual_only")
 MACHINE_SRT_NAME = "machine.zh.srt"
 MACHINE_ASS_NAME = "machine.zh.ass"
-QUALITY_GATE_VERSION = 1
-GATE_RULES = ("QC01_PARSE", "QC02_TIME", "QC03_BOUNDS", "QC04_IDENTITY", "QC05_COVERAGE", "QC06_ORDER", "QC17_TRANSLATION", "QC23_EMPTY")
+QUALITY_GATE_VERSION = 2          # W06: the full rule table of quality.py (W04/W05 gate = 1)
+GATE_RULES = quality_module.HARD_RULES
 
 
 # --------------------------------------------------------------------------- settings and resources
@@ -497,14 +497,12 @@ class SubtitleBuildStage:
         return {"ok": True, "cues": len(cues), "status": build["status"], "style_source": style["source"], "legacy_warnings": {k: v["warnings"] for k, v in legacy.items()}}
 
 
-# --------------------------------------------------------------------------- QUALITY_AND_COMMIT (W04: structural gate + commit; soft rules arrive with W06)
+# --------------------------------------------------------------------------- QUALITY_AND_COMMIT (W04 commit, W06 full rule table and review report)
 
-def _issue(revision_id: str, rule_id: str, severity: str, message: str, *, cue_ids: list[str], observed: Any, recommended: str, verification: str = "measured") -> dict:
-    return require_record("Issue", {"issue_id": new_id(), "rule_id": rule_id, "severity": severity, "revision_id": revision_id, "cue_ids": cue_ids, "start_ms": None, "end_ms": None,
-                                    "source_refs": [], "observed": observed, "threshold": None, "message": message, "recommended_action": recommended, "verification": verification})
+QUALITY_SCOPE_NAME, REVIEW_CSV_NAME, REVIEW_HTML_NAME = "quality_scope.json", "review.csv", "review.html"
 
 
-def _find_machine_revision(project_dir: Path, *, run_id: str, srt_sha256: str, ass_sha256: str, translations_sha256: str) -> dict | None:
+def _find_machine_revision(project_dir: Path, *, run_id: str, srt_sha256: str, ass_sha256: str, translations_sha256: str, quality: dict) -> dict | None:
     root = Path(project_dir) / "revisions" / "machine"
     if not root.is_dir():
         return None
@@ -518,8 +516,11 @@ def _find_machine_revision(project_dir: Path, *, run_id: str, srt_sha256: str, a
         if (record["run_id"], record["subtitle_files"]["srt"]["sha256"], record["subtitle_files"]["ass"]["sha256"], record["translations_ref"]["sha256"]) == (run_id, srt_sha256, ass_sha256, translations_sha256):
             try:
                 verify_committed(candidate, machine_revision_refs(record))
-            except ContractError:
+                scope = _read_json(candidate / QUALITY_SCOPE_NAME)
+            except (ContractError, OSError, ValueError):
                 continue
+            if scope.get("rules_version") != quality_module.QUALITY_RULES_VERSION or scope.get("thresholds") != quality:
+                continue    # judged by an older rule table or other thresholds: a new revision is committed, the old one stays as it is
             return record
     return None
 
@@ -529,8 +530,9 @@ def machine_revision_refs(record: dict) -> list[dict]:
 
 
 class QualityAndCommitStage:
-    """W04 part of QUALITY_AND_COMMIT: the hard structural/identity gate (QC01-QC06, QC17, QC23) and the immutable
-    MachineRevision. The soft rules QC07-QC16, QC18-QC22 and the review CSV/HTML are W06; the report says which rules ran."""
+    """QUALITY_AND_COMMIT: the rule table of quality.py (QC01-QC23 as far as evidence exists; the scope file says which rules
+    ran), the review files (quality.json, quality_scope.json, review.csv, review.html) and the immutable MachineRevision.
+    A hard error commits nothing; warnings never change a subtitle byte (plan 11.1)."""
     name = "QUALITY_AND_COMMIT"
 
     def signature_inputs(self, ctx: StageContext) -> dict:
@@ -539,7 +541,7 @@ class QualityAndCommitStage:
         return {"srt_sha256": _stage_output_ref(ctx, "SUBTITLE_BUILD", MACHINE_SRT_NAME)["sha256"], "ass_sha256": _stage_output_ref(ctx, "SUBTITLE_BUILD", MACHINE_ASS_NAME)["sha256"],
                 "translations_sha256": _stage_output_ref(ctx, "TRANSLATION", "translations.json")["sha256"], "source_revision_id": pointer["source_revision_id"],
                 "media_id": record["media_id"], "duration_ms": record["duration_ms"], "quality": ctx.request["config_snapshot"]["app_config"]["quality"],
-                "gate_version": QUALITY_GATE_VERSION, "gate_rules": list(GATE_RULES)}
+                "gate_version": QUALITY_GATE_VERSION, "gate_rules": list(GATE_RULES), "quality_rules_version": quality_module.QUALITY_RULES_VERSION}
 
     def run(self, ctx: StageContext) -> dict:
         request = ctx.request
@@ -573,13 +575,16 @@ class QualityAndCommitStage:
         read_back = {"srt": subtitles.verify_written(build_dir / MACHINE_SRT_NAME, "srt", expected, duration_ms=record["duration_ms"]),
                      "ass": subtitles.verify_written(build_dir / MACHINE_ASS_NAME, "ass", expected, duration_ms=record["duration_ms"])}
         srt_sha256, ass_sha256 = sha256_file(build_dir / MACHINE_SRT_NAME), sha256_file(build_dir / MACHINE_ASS_NAME)
-        existing = _find_machine_revision(ctx.project_dir, run_id=ctx.task["run_id"], srt_sha256=srt_sha256, ass_sha256=ass_sha256, translations_sha256=translations_sha256)
+        existing = _find_machine_revision(ctx.project_dir, run_id=ctx.task["run_id"], srt_sha256=srt_sha256, ass_sha256=ass_sha256, translations_sha256=translations_sha256,
+                                          quality=request["config_snapshot"]["app_config"]["quality"])
         if existing is not None:
             revision_id = existing["revision_id"]
             ctx.emit({"event": "machine_revision_reused", "revision_id": revision_id})
         else:
             revision_id = new_id()
-            quality = self._quality_report(revision_id, request, segment_set, translations, record, loaded)
+            quality = self._quality(ctx, revision_id, segment_set, translations, record, loaded, build_dir, translation_dir)
+            if quality["report"]["structural_status"] != "valid":
+                self._refuse(ctx, quality)
             pending = begin_pending(ctx.project_dir)
             shutil.copy2(build_dir / MACHINE_SRT_NAME, pending / MACHINE_SRT_NAME)
             shutil.copy2(build_dir / MACHINE_ASS_NAME, pending / MACHINE_ASS_NAME)
@@ -590,7 +595,9 @@ class QualityAndCommitStage:
             if (translation_dir / "exchanges").is_dir():
                 shutil.copytree(translation_dir / "exchanges", pending / "exchanges")
             atomic_write_text(pending / "quality.json", render_json(quality["report"]))
-            atomic_write_text(pending / "quality_scope.json", render_json(quality["scope"]))
+            atomic_write_text(pending / QUALITY_SCOPE_NAME, render_json(quality["scope"]))
+            for name, data in quality_module.review_files(quality, title="机器字幕复核报告（未经人工检查）", links=self._links(loaded)).items():
+                atomic_write_bytes(pending / name, data)
             if sha256_file(pending / MACHINE_SRT_NAME) != srt_sha256 or sha256_file(pending / MACHINE_ASS_NAME) != ass_sha256 or sha256_file(pending / "translations.json") != translations_sha256:
                 raise ContractError("ARTIFACT_CHANGED", "the copied subtitle files differ from the verified stage outputs", details={"rule_id": "QC04_IDENTITY"})
             source_revision_id, media_id, run_id, project_id = segment_set["source_revision_id"], record["media_id"], ctx.task["run_id"], request["project_id"]
@@ -615,37 +622,53 @@ class QualityAndCommitStage:
                 "structural_status": quality_report["structural_status"], "human_status": quality_report["human_status"],
                 "issue_rule_ids": [issue["rule_id"] for issue in quality_report["issues"]], "gate_rules": list(GATE_RULES)}
 
-    def _quality_report(self, revision_id: str, request: dict, segment_set: dict, translations: dict, media_record: dict, loaded_source: dict) -> dict:
-        issues: list[dict] = []
-        if not segment_set["segments"]:
-            issues.append(_issue(revision_id, "QC23_EMPTY", "WARNING", "no subtitle was produced: the recognition returned no text for this mode (EMPTY is a result, not an error)",
-                                 cue_ids=[], observed={"segments": 0, "recognition_mode": segment_set["recognition_mode"]},
-                                 recommended="check the audio/on-screen text or try another mode; no placeholder cue was created"))
-        unknown: list[str] = []
-        for ref_name, capability in (("visual_evidence.json", "ocr_scores"), ("visual_evidence.json", "frame_pts")):
-            evidence_path = loaded_source["dir"] / "recognition" / ref_name
-            if evidence_path.is_file():
-                evidence = source_module.read_json(evidence_path)
-                if evidence["extensions"].get("score_status" if capability == "ocr_scores" else "frame_pts_status") == "unknown" and capability not in unknown:
-                    unknown.append(capability)
-        speech_path = loaded_source["dir"] / "recognition" / "speech_evidence.json"
-        if speech_path.is_file():
-            speech = source_module.read_json(speech_path)
-            if all(parent["score"] is None for parent in speech["parents"]):
-                unknown.append("asr_scores")
-            if speech["activity_intervals"] is None:
-                unknown.append("speech_activity")
-        report = require_record("QualityReport", {
-            "schema_version": SCHEMA_VERSION, "revision_id": revision_id, "rule_set_version": int(request["config_snapshot"]["app_config"]["quality"]["rule_set_version"]),
-            "issues": issues, "unknown_capabilities": unknown, "structural_status": "valid", "human_status": "UNREVIEWED", "confirmed_scopes": [], "generated_at": utc_now()})
-        scope = {"schema_version": SCHEMA_VERSION, "gate_version": QUALITY_GATE_VERSION, "evaluated_rules": list(GATE_RULES),
-                 "not_evaluated_rules": ["QC07_DURATION", "QC08_SPEED", "QC09_OVERLAP", "QC10_OCR_SCORE", "QC11_ASR_SCORE", "QC12_SCORE_UNKNOWN", "QC13_OCR_CONTINUITY",
-                                         "QC14_SOURCE_CONFLICT", "QC15_WORD_CLOCK", "QC16_ACTIVITY_GAP", "QC18_TERMS", "QC19_UNCERTAIN", "QC20_REVIEW_BASE", "QC21_MEDIA_BINDING", "QC22_FONT"],
-                 "note": "W04 commits a machine revision after the structural/identity gate only; the soft rules, review.csv and review.html are work package W06. "
-                         "Segment flags (segments.json) and translation flags (translations.json) are kept for them.",
-                 "flag_counts": {"segments": _flag_counts(segment["flags"] for segment in segment_set["segments"]),
-                                 "translations": _flag_counts(item["flags"] for item in translations["records"])}}
-        return {"report": report, "scope": scope}
+    def _quality(self, ctx: StageContext, revision_id: str, segment_set: dict, translations: dict, media_record: dict, loaded: dict, build_dir: Path, translation_dir: Path) -> dict:
+        """The full rule table (quality.py) on the machine SRT, with the ASS layers, the segments, translations and recognition evidence."""
+        recognition_dir = loaded["dir"] / "recognition"
+
+        def optional(path: Path) -> dict | None:
+            return source_module.read_json(path) if path.is_file() else None
+
+        view = subtitles.parse_view((build_dir / MACHINE_SRT_NAME).read_bytes(), "srt")
+        ass_view = subtitles.parse_view((build_dir / MACHINE_ASS_NAME).read_bytes(), "ass")
+        evidence = {"segment_set": segment_set, "translation_set": translations, "speech_evidence": optional(recognition_dir / "speech_evidence.json"),
+                    "visual_evidence": optional(recognition_dir / "visual_evidence.json"), "postprocess_trace": optional(translation_dir / "postprocess_trace.json")}
+        result = quality_module.evaluate({
+            "revision_id": revision_id, "revision_kind": "machine", "media_record": media_record, "subtitle_ref": artifact_ref(ctx.project_dir, build_dir / MACHINE_SRT_NAME),
+            "parsed_view": view, "source_revision": loaded["record"], "recognition_refs": list(loaded["record"]["recognition_refs"]),
+            "translation_ref": artifact_ref(ctx.project_dir, translation_dir / "translations.json"), "rule_config": dict(ctx.request["config_snapshot"]["app_config"]["quality"]),
+            "attestations": [], "extensions": {"origin": "machine", "loaded": evidence, "cue_layers": [cue["layer"] for cue in ass_view["cues"] if cue["kind"] == "dialogue"]}})
+        result["scope"]["gate_version"] = QUALITY_GATE_VERSION
+        result["scope"]["flag_counts"] = {"segments": _flag_counts(segment["flags"] for segment in segment_set["segments"]),
+                                          "translations": _flag_counts(item["flags"] for item in translations["records"])}
+        return result
+
+    def _refuse(self, ctx: StageContext, quality: dict) -> None:
+        """A hard error: no revision. The report is kept in the attempt directory so the failed input can be looked at as it is."""
+        failed = ctx.attempt_dir / "quality_refused"
+        failed.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(failed / "quality.json", render_json(quality["report"]))
+        atomic_write_text(failed / QUALITY_SCOPE_NAME, render_json(quality["scope"]))
+        for name, data in quality_module.review_files(quality, title="机器字幕复核报告（有结构错误，没有提交）").items():
+            atomic_write_bytes(failed / name, data)
+        errors = [issue for issue in quality["report"]["issues"] if issue["severity"] == "ERROR"]
+        rule_ids = sorted({issue["rule_id"] for issue in errors})
+        code = ("SOURCE_COVERAGE_ERROR" if "QC05_COVERAGE" in rule_ids else "TRANSLATION_IDENTITY_ERROR" if {"QC04_IDENTITY", "QC17_TRANSLATION"} & set(rule_ids)
+                else "SUBTITLE_INVALID")
+        raise ContractError(code, f"the machine subtitle has {len(errors)} structural error(s); no revision was committed", details={
+            "rule_ids": rule_ids, "rule_id": rule_ids[0], "report_ref": artifact_ref(ctx.project_dir, failed / "quality.json"),
+            "issues": [{"rule_id": issue["rule_id"], "message": issue["message"]} for issue in errors[:20]]})
+
+    @staticmethod
+    def _links(loaded: dict) -> list[dict]:
+        source_rel = f"../../source/{loaded['record']['revision_id']}/"
+        links = [{"label": "机器中文字幕（SRT）", "href": MACHINE_SRT_NAME}, {"label": "机器中文字幕（ASS，保留层和样式）", "href": MACHINE_ASS_NAME},
+                 {"label": "质量记录（quality.json）", "href": "quality.json"}, {"label": "复核表（review.csv）", "href": REVIEW_CSV_NAME},
+                 {"label": "日文源字幕（本次翻译所用的 canonical source）", "href": source_rel + loaded["record"]["source_subtitle_ref"]["path"]}]
+        for name, label in ((source_module.ASR_REFERENCE_NAME, "日文语音识别参考字幕（ASR，只作对照）"), (source_module.OCR_REFERENCE_NAME, "日文画面文字参考字幕（OCR，只作对照）")):
+            if (loaded["dir"] / name).is_file():
+                links.append({"label": label, "href": source_rel + name})
+        return links
 
 
 def _flag_counts(flag_lists) -> dict[str, int]:

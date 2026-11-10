@@ -39,6 +39,7 @@ from upgrade.storage import (
 from task_state import append_jsonl  # legacy pure helper: redacting JSONL append with fsync
 
 STAGE_VERSIONS: dict[str, int] = {name: 1 for name in STAGES}
+STAGE_VERSIONS["QUALITY_AND_COMMIT"] = 2   # W06 (IF-28): the full rule table and the review files; old stage caches do not apply
 MODE_SKIPS: dict[str, dict[str, str]] = {
     "combined": {},
     "speech_only": {"OCR": "MODE"},

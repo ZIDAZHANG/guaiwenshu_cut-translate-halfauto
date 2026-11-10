@@ -47,6 +47,7 @@ BASE_KINDS = {"source": ("source",), "review": ("machine", "review")}   # what a
 VIEW_NAME = "view.json"
 CORRESPONDENCES_NAME = "correspondences.json"
 QUALITY_NAME = "quality.json"
+SCOPE_NAME, REVIEW_CSV_NAME, REVIEW_HTML_NAME = "quality_scope.json", "review.csv", "review.html"
 CANDIDATE_NAME = "candidate.json"
 SESSION_RECORD_NAME = "base.json"
 SOURCE_BOUNDS_TOLERANCE_MS = source_module.BOUNDS_TOLERANCE_MS   # a human source becomes millisecond segments (see _check)
@@ -86,7 +87,8 @@ def _managed_refs(kind: str, manifest: dict) -> list[dict]:
         return [manifest["subtitle_files"]["srt"], manifest["subtitle_files"]["ass"], manifest["translations_ref"], manifest["quality_ref"], *manifest["raw_evidence_refs"]]
     if kind == "source":
         return source_module.revision_refs(manifest)
-    return [manifest["original_file_ref"], manifest["validated_view_ref"], manifest["correspondences_ref"], manifest["quality_ref"]]
+    return [manifest["original_file_ref"], manifest["validated_view_ref"], manifest["correspondences_ref"], manifest["quality_ref"],
+            *(manifest.get("extensions") or {}).get("report_refs", [])]
 
 
 def _subtitle_files(kind: str, manifest: dict) -> dict[str, dict]:
@@ -343,6 +345,35 @@ def _base_view(project: Path, base: dict, fmt: str) -> dict:
     return subtitles.parse_view(safe_join(project, base["subtitle_files"][fmt]["path"]).read_bytes(), fmt)
 
 
+def _cue_sources(project: Path, base: dict | None, view: dict, rows: list[dict], id_scheme: str) -> dict[str, dict]:
+    """What the review table may show next to each edited cue: only what the correspondence established, nothing guessed.
+    The role is taken over only for an exact correspondence; a candidate shows the base text as a hint (provenance partial)."""
+    by_ordinal = {cue["ordinal"]: cue for cue in view["cues"]}
+    segments: dict[str, dict] = {}
+    if base is not None and id_scheme == "revision_cue_id" and base["kind"] in ("machine", "source"):
+        source_revision_id = base["manifest"]["source_revision_id"] if base["kind"] == "machine" else base["manifest"]["revision_id"]
+        try:
+            segments = {segment["cue_id"]: segment for segment in source_module.load_source_revision(project, source_revision_id)["segment_set"]["segments"]}
+        except ContractError:
+            segments = {}
+    sources: dict[str, dict] = {}
+    for row in rows:
+        cue = by_ordinal.get(row["edited_cue_ordinal"])
+        if cue is None:
+            continue
+        status = {"exact": "exact", "candidate": "partial"}.get(row["mapping_status"], "unmapped")
+        linked = [segments[cue_id] for cue_id in row["source_cue_ids"] if cue_id in segments]
+        entry: dict[str, Any] = {"provenance_status": status}
+        if linked:
+            entry.update({"source_text": chr(10).join(segment["source_text"] for segment in linked), "source_ref": " ".join(f"cue:{segment['cue_id']}" for segment in linked)})
+            if status == "exact" and len({segment["role"] for segment in linked}) == 1:
+                entry["role"] = linked[0]["role"]
+        elif row["source_cue_ids"]:
+            entry["source_ref"] = " ".join(f"base_cue:{cue_id}" for cue_id in row["source_cue_ids"])
+        sources[cue["cue_id"]] = entry
+    return sources
+
+
 def _base_cue_ids(project: Path, base: dict, view: dict) -> tuple[dict[str, str] | None, str]:
     """Map the base file's view cue ids to the base revision's own cue ids where that is certain (same order, same count, same times)."""
     kind, manifest = base["kind"], base["manifest"]
@@ -497,11 +528,21 @@ def _import(data_root: Path | str, project_id: str, media_id: str, file: Path | 
                                                                     "counts": {key: summary[key] for key in ("exact", "candidate", "unmapped", "edited_cues", "base_cues")}}}
     if kind == "source":
         extensions["bounds_tolerance_ms"] = SOURCE_BOUNDS_TOLERANCE_MS
-    report = quality_module.check_quality({
+    extensions["cue_sources"] = _cue_sources(project, base, view, rows, id_scheme)
+    result = quality_module.evaluate({
         "revision_id": revision_id, "revision_kind": kind, "media_record": media_record, "subtitle_ref": artifact_ref(pending, pending / original_name), "parsed_view": view,
         "source_revision": None, "recognition_refs": [], "translation_ref": None, "rule_config": copy.deepcopy(rule_config if rule_config is not None else DEFAULT_QUALITY),
         "attestations": [], "extensions": extensions})
+    report = result["report"]
     atomic_write_text(pending / QUALITY_NAME, render_json(report))
+    atomic_write_text(pending / SCOPE_NAME, render_json(result["scope"]))
+    links = [{"label": f"人工{'日文源' if kind == 'source' else '中文'}字幕原文件（{fmt.upper()}，按原字节保存）", "href": original_name},
+             {"label": "质量记录（quality.json）", "href": QUALITY_NAME}, {"label": "复核表（review.csv）", "href": REVIEW_CSV_NAME}]
+    if base is not None and base_fmt:
+        links.append({"label": f"基础版本字幕（{base['kind']} {base_revision_id}，{base_fmt.upper()}）", "href": "../../../" + base["subtitle_files"][base_fmt]["path"]})
+    title = f"{'人工日文源字幕' if kind == 'source' else '人工中文字幕'}复核报告"
+    for name, data in quality_module.review_files(result, title=title, links=links).items():
+        atomic_write_bytes(pending / name, data)
     if report["structural_status"] != "valid":
         errors = [issue for issue in report["issues"] if issue["severity"] == "ERROR"]
         candidate = _keep_candidate(pending, project, {"kind": kind, "format": fmt, "sha256": snapshot["sha256"], "reason": "structural_errors", "candidate_revision_id": revision_id})
@@ -517,7 +558,7 @@ def _import(data_root: Path | str, project_id: str, media_id: str, file: Path | 
             return {"schema_version": SCHEMA_VERSION, "revision_id": revision_id, "project_id": project_id, "media_id": media_id, "base_revision_id": base_revision_id,
                     "session_id": session_id, "original_file_ref": by_path[original_name], "validated_view_ref": by_path[VIEW_NAME], "format": fmt, "encoding": view["encoding"],
                     "provenance_status": provenance, "correspondences_ref": by_path[CORRESPONDENCES_NAME], "quality_ref": by_path[QUALITY_NAME], "created_at": utc_now(),
-                    "extensions": common}
+                    "extensions": {**common, "report_refs": [by_path[name] for name in (SCOPE_NAME, REVIEW_CSV_NAME, REVIEW_HTML_NAME)]}}
         final_dir, index_key = project / "revisions" / "review" / revision_id, "review_revision_ids"
     else:
         built = _segments_from_view(view)

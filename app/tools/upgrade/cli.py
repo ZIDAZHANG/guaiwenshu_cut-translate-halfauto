@@ -280,7 +280,9 @@ def _revision_summary(config: dict, project_id: str, revision_id: str) -> tuple[
            "base_revision_id": manifest.get("base_revision_id", manifest.get("parent_revision_id")), "format": fmt,
            "directory": resolved["directory"], "subtitle_sha256": ref["sha256"], "provenance_status": manifest["provenance_status"],
            "structural_status": report["structural_status"], "human_status": confirmation["human_status"], "confirmed_scopes": confirmation["confirmed_scopes"],
-           "issue_counts": counts}
+           "issue_counts": counts,
+           "report_files": {name: f"{resolved['directory']}/{name}" for name in ("review.html", "review.csv", "quality_scope.json")
+                            if (project / resolved["directory"] / name).is_file()}}
     warnings = list(resolved["notices"])
     listed = [issue for issue in report["issues"] if issue["severity"] == "WARNING"]
     warnings += [{"code": issue["rule_id"], "severity": issue["severity"], "message": issue["message"], "cue_ids": issue["cue_ids"]} for issue in listed[:20]]
@@ -347,6 +349,47 @@ def cmd_review_attest(args: argparse.Namespace) -> int:
         "project_id": args.project, "revision_id": args.revision, "attestation_id": record["attestation_id"], "media_id": record["media_id"], "format": fmt,
         "subtitle_sha256": record["subtitle_sha256"], "scopes": record["scopes"], "human_status": confirmation["human_status"],
         "confirmed_scopes": confirmation["confirmed_scopes"]}, warnings=list(resolved["notices"])))
+    return EXIT_OK
+
+
+def _boundary_times(report: dict, issue_id: str) -> list[int]:
+    issue = next((item for item in report["issues"] if item["issue_id"] == issue_id), None)
+    if issue is None:
+        raise ContractError("NEEDS_SELECTION", "this revision's quality report has no issue with that id", details={"issue_id": issue_id})
+    observed = issue["observed"] if isinstance(issue["observed"], dict) else {}
+    times = list(observed.get("boundary_times_ms") or [value for value in (issue["start_ms"], issue["end_ms"]) if value is not None])
+    if not times:
+        raise ContractError("NEEDS_SELECTION", "this issue names no time; pass --at-ms", details={"issue_id": issue_id, "rule_id": issue["rule_id"]})
+    return times
+
+
+def cmd_review_frames(args: argparse.Namespace) -> int:
+    """Boundary frames on demand (plan 11.3): the frames around a time, labelled with the decoded frame's real PTS. Reads the media only."""
+    from upgrade import media, revisions
+    from upgrade.contracts import load_record, new_id
+    from upgrade.runner import project_dir
+    from upgrade.stages import resolve_roles
+    config = _data_root_config(args.data_root)
+    resolved = revisions.resolve_revision(config["data_root"], args.project, args.revision)
+    project = project_dir(config["data_root"], args.project)
+    times: list[int] = []
+    if args.issue:
+        times += _boundary_times(load_record("QualityReport", project / resolved["directory"] / revisions.QUALITY_NAME), args.issue)
+    if args.at_ms:
+        try:
+            times += [int(value) for value in args.at_ms.split(",") if value.strip()]
+        except ValueError as exc:
+            raise ContractError("NEEDS_SELECTION", f"--at-ms must be integer milliseconds separated by commas, got {args.at_ms!r}") from exc
+    if not times or any(value < 0 for value in times):
+        raise ContractError("NEEDS_SELECTION", "pass --issue or --at-ms with non-negative milliseconds")
+    record = media.load_media_record(project, resolved["media_id"])
+    roles = resolve_roles(config, {"config_snapshot": {"engine_settings": _engine_settings_for(config)}, "resource_refs": []}, ["ffprobe", "ffmpeg"])
+    runtime = media.MediaRuntime(project_dir=project, ffprobe=roles["ffprobe"], ffmpeg=roles["ffmpeg"], log_dir=project / "logs" / f"frames-{new_id()}", owner_token="review-frames")
+    document = media.export_boundary_frames(record, times, Path(args.destination), runtime=runtime)
+    _emit(_result("review.frames", ok=True, ids={
+        "project_id": args.project, "revision_id": args.revision, "media_id": resolved["media_id"], "destination": str(Path(args.destination)),
+        "times_ms": document["times_ms"], "frames": [{key: frame[key] for key in ("file", "pts", "time_base_num", "time_base_den", "frame_ms", "purposes")}
+                                                     for frame in document["frames"]]}))
     return EXIT_OK
 
 
@@ -474,6 +517,14 @@ def build_parser() -> argparse.ArgumentParser:
     review_attest.add_argument("--format", default=None, choices=("srt", "ass"), help="版本含多个字幕文件（机器版）时指明确认哪一个")
     review_attest.add_argument("--note", default=None)
     review_attest.set_defaults(func=cmd_review_attest)
+    review_frames = review_sub.add_parser("frames", help="按需导出边界帧：把指定时间前后两帧另存为 PNG，文件名和 frames.json 标注实际 PTS（只读视频）")
+    review_frames.add_argument("--data-root", required=True)
+    review_frames.add_argument("--project", required=True)
+    review_frames.add_argument("--revision", required=True)
+    review_frames.add_argument("--issue", default=None, help="质量记录里的 issue_id：取它的边界时间（QC13 的边界，或问题的起止时间）")
+    review_frames.add_argument("--at-ms", default=None, help="逗号分隔的毫秒时间（规范时间轴，首个显示帧 = 0）")
+    review_frames.add_argument("--destination", required=True, help="新目录；已存在则拒绝（不覆盖）")
+    review_frames.set_defaults(func=cmd_review_frames)
     return parser
 
 

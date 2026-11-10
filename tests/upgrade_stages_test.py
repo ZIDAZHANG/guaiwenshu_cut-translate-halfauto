@@ -22,7 +22,7 @@ import unittest
 
 from support import w03, w04
 from upgrade import contracts as c
-from upgrade import dictionary, recognition, translation
+from upgrade import dictionary, quality as quality_module, recognition, translation
 from upgrade import runner as r
 from upgrade.config import APP_CONFIG_NAME, ENGINE_SETTINGS_NAME, default_app_config, save_app_config, save_engine_settings
 from upgrade.resource_catalog import inspect_resources, resolve_resource
@@ -153,7 +153,13 @@ class ModeTests(StageTestCase):
         self.assertEqual((quality["structural_status"], quality["human_status"], quality["confirmed_scopes"]), ("valid", "UNREVIEWED", []))
         scope = json.loads((revision_dir / "quality_scope.json").read_text(encoding="utf-8"))
         self.assertIn("QC05_COVERAGE", scope["evaluated_rules"])
-        self.assertIn("QC08_SPEED", scope["not_evaluated_rules"])                          # W06 rules are named as not evaluated, not faked
+        self.assertIn("QC08_SPEED", scope["evaluated_rules"])                              # W06: the soft rules run on the machine revision
+        self.assertIn("QC22_FONT", scope["not_evaluated_rules"])                           # export-only rules are named as not evaluated, not faked
+        self.assertEqual(scope["rules_version"], quality_module.QUALITY_RULES_VERSION)
+        evidence_paths = {ref["path"] for ref in record["raw_evidence_refs"]}
+        self.assertTrue({"quality_scope.json", "review.csv", "review.html"} <= evidence_paths)  # the review files are hashed in the manifest
+        self.assertTrue((revision_dir / "review.csv").read_bytes().startswith(b'\xef\xbb\xbf"revision_id","cue_id"'))
+        self.assertIn("../../source/" + record["source_revision_id"] + "/recognition/reference.asr.ja.srt", (revision_dir / "review.html").read_text(encoding="utf-8"))
         # source revision: canonical source SRT, v8 record, ASR/OCR reference subtitles
         source_dir = project / "revisions" / "source" / record["source_revision_id"]
         names = {p.relative_to(source_dir).as_posix() for p in source_dir.rglob("*") if p.is_file()}
@@ -238,7 +244,8 @@ class ModeTests(StageTestCase):
         self.assertIn("[Events]", ass)
         self.assertNotIn("Dialogue:", ass)
         quality = c.load_record("QualityReport", revision_dir / "quality.json")
-        self.assertEqual([issue["rule_id"] for issue in quality["issues"]], ["QC23_EMPTY"])
+        self.assertEqual([issue["rule_id"] for issue in quality["issues"] if issue["severity"] != "INFO"], ["QC23_EMPTY"])
+        self.assertIn("speech_activity", quality["unknown_capabilities"])                  # QC16 says "unknown", it does not claim nothing was missed
         self.assertEqual(c.load_record("TranslationSet", revision_dir / "translations.json")["status"], "EMPTY")
         self.assertEqual(w04.requests_log(self.model), [])
         self.assertFalse((self.stage_dir(project, task, "TRANSLATION") / "server").exists())

@@ -138,6 +138,29 @@ D01–D20、FR01–FR16、QC01–QC23、W00–W10、T01–T09、B01–B11 全部
 | Q-W05-3 | 结构错误的候选按 4.2/9.2 保留在 `.pending/`，目前没有列出/丢弃它们的命令；W08 的界面需要提供（否则只能手工删除目录） | 计划 4.2、9.2 |
 | EV-05 | 新增 `tests/upgrade_revisions_test.py` 15 个用例 PASS（14 个建立在真实 FFmpeg/ffprobe 流水线产出的机器版本上，命令行用例经真实子进程，文件占用用例用真实的 Windows 文件锁；1 个静态核对导入关系）；全套 35/35（3.10 venv） | `validation-ledger.json` T05-W05 |
 
+## 5f. W06 记录（2026-11-11）
+
+| 编号 | 决定/事实 | 依据 |
+| --- | --- | --- |
+| IF-40 | `quality.evaluate(QualityInput)` 返回 `{report, scope, rows}`；计划接口 `check_quality()` 不变，只返回 `QualityReport`。模块不打开任何文件，识别证据、分段、译文和后处理记录由调用方放进 `extensions.loaded` | 计划 5 节模块表、6.8 |
+| IF-41 | 规则范围另存 `quality_scope.json`：`evaluated_rules`、`not_evaluated_rules`（规则 → 原因）、`disabled_rules`（阈值为 null）、`hard_rules`、`rules_version=2`、阈值快照。没有检查的规则在报告里写"未检查"，从不显示为通过 | 11.1、D19 |
+| IF-42 | 机器版本的规则表跑在机器 SRT 的只读视图上，层号取自同版本 ASS（条数一致时）；ASS 的结构由 W04 的回读校验负责 | 6.7、11.2 QC09 |
+| IF-43 | QUALITY_AND_COMMIT 遇 ERROR 不提交；报告四件套写到本次尝试目录 `quality_refused/`；错误码：QC05 → `SOURCE_COVERAGE_ERROR`，QC04/QC17 → `TRANSLATION_IDENTITY_ERROR`，其余 → `SUBTITLE_INVALID`，`details.rule_ids` 列出全部规则 | 11.1"允许原样取出失败输入用于修复" |
+| IF-44 | `STAGE_VERSIONS["QUALITY_AND_COMMIT"]=2`、`QUALITY_GATE_VERSION=2`，旧质量阶段缓存失效（IF-28 结算）；同一运行、同样字幕与译文字节的已有机器版本，只有其 `quality_scope.json` 的 `rules_version` 与阈值都相同才复用，否则提交新版本，旧版本不动 | 4.3、IF-28 |
+| IF-45 | 人工中文版本 manifest 的 `extensions.report_refs` 登记 `quality_scope.json`、`review.csv`、`review.html`，与其他文件一样按哈希校验；人工源版本沿用 W05 规则（其余文件进 `recognition_refs`） | 4.3、6.6 |
+| IF-46 | 人工稿报告的逐条来源：角色只取 exact 对应；candidate 只显示基础分段的源文并标 `partial`；其余为 `unknown` / `unmapped`，不猜 | 9.2 步骤 4、11.3 |
+| IF-47 | `review.csv`：每条显示字幕一行，不属于任何字幕的问题各一行；`rule_ids` 用 `;`、`message` 用 ` \| ` 连接，`severity` 取最严重；时间写作 `HH:MM:SS.mmm`；全部单元格加引号、CRLF；公式前缀按 11.3 | 11.3 |
+| IF-48 | `review.html`：`Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:`，没有脚本；链接为相对路径并百分号编码；逐条列出规则是否检查 | 11.3 |
+| IF-49 | 分数阈值只用于登记过类型的分数：ASR `whisper_token_probability`（计划原名）；OCR 登记一个名字 `ocr_confidence_0_1`（0—1、越高越可信、未校准）。目前没有后端产出它（B03），真实运行中 OCR 只会出 QC12 汇总 | 6.4、11.2 QC10/QC12 |
+| IF-50 | 边界帧：每个时间点导出"当时在屏幕上的帧"和"前一帧"；寻址点取两帧 PTS 的中点并按文件起始时间换算；`-copyts` 下以 `showinfo` 报告的 PTS 与包探测的呈现 PTS 核对，不一致即 `EXPORT_VALIDATION_FAILED`；媒体时钟未验证即 `MEDIA_CLOCK_UNKNOWN` | 6.4"frame ref 必有实际 PTS"、11.3 |
+| CO-CAND-006 | **按需导出边界帧的命令与位置**：计划只要求"边界帧按需导出"，没有给命令和目录。本包实现为 `review frames --data-root --project --revision (--issue ID \| --at-ms 列表) --destination 新目录`，写到用户指定的新目录（版本目录只创建一次，不能事后加文件），PNG 文件名带 PTS 与时间基，另附 `frames.json`。待负责人确认命令形态或改为项目内固定目录 | 4.2/4.3/12.1 未定义 |
+| Q-W06-1 | QC18 的"未确认译名"：现有翻译后处理没有这种标记，本包不新增检测，只报告"缺译名"和"残留假名"两种已有标记。需要时由负责人定义（与 B06 一起） | 8.4、11.2 QC18 |
+| Q-W06-2 | QC19 的"未完句"：没有现成检测；11.2 注明不实现更复杂的语义判断，本包只报告现有标记与 `[待确认]` | 11.2 注 |
+| Q-W06-3 | QC09 遇到没有角色信息的外部人工文件：按"unknown 提示"处理为 WARNING、`verification=unknown`；如负责人认为应降为 INFO，只改这一处 | 11.2 QC09"无role的外部文件按unknown提示" |
+| Q-W04-3 | **结算**：`visual_only` 模式下全部 `VISUAL_ONLY`+`CHECK` 的分段是模式事实，汇总成一条 QC19 INFO；其他模式下仍逐条 WARNING | W04 记录 |
+| Q-W04-1 | 仍待负责人决定（ASS 10 ms 量化的画面时间与 1 ms 规范容差），本包按字面实现：ASS 文件用 10 ms 容差，机器 ASS 与分段的时间比较允许 9 ms | W04 记录 |
+| EV-06 | 证据：`tests/upgrade_quality_test.py`（18 个用例，表驱动 + 真实 ffmpeg 边界帧 + 真实流水线）、`tests/upgrade_stages_test.py`；全套汇总 `LOCAL_WORKSPACE/roast-w06-tests-summary.json` | 14.3 T03 |
+
 ## 6. 不做的事（W00 重申）
 
 不删除 VoiceTransl/剪映相关源码，不为商用换模型，不更新全局 Python，不重写分段算法，不下载模型，不修改 D 盘旧目录、原媒体、旧词典，不在用户文档目录写入任何文件。

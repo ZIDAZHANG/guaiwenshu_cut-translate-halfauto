@@ -27,6 +27,7 @@ import dataclasses
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import wave
@@ -1054,3 +1055,90 @@ __all__ = [
     "load_media_record", "verify_source", "build_media_record", "probe_media", "is_direct_usable", "compare_frame_maps", "prepare_media",
     "worker_command", "download_argv", "download_media",
 ]
+
+
+# --------------------------------------------------------------------------- boundary frames on demand (plan 11.3, W06)
+
+FRAME_PURPOSES = ("boundary_before", "boundary_at")
+_SHOWINFO_RE = re.compile(r"\bn:\s*(\d+)\s+pts:\s*(-?\d+)\s+pts_time:\s*(-?[0-9.]+)")
+
+
+def boundary_frame_plan(pts_sorted: list[int], time_base: Fraction, origin_seconds: Fraction, target_ms: int) -> list[dict]:
+    """For one boundary time: the frame on screen at that time and the frame just before it, as presented PTS.
+    A time before the first frame has only the first frame; nothing is interpolated."""
+    times = [pts_to_ms(pts, time_base, origin_seconds) for pts in pts_sorted]
+    at = max((position for position, ms in enumerate(times) if ms <= target_ms), default=0)
+    plan = []
+    if at > 0 and times[at] <= target_ms:
+        plan.append({"purpose": "boundary_before", "position": at - 1})
+    plan.append({"purpose": "boundary_at", "position": at})
+    return [{**entry, "pts": pts_sorted[entry["position"]], "frame_ms": times[entry["position"]],
+             "previous_pts": pts_sorted[entry["position"] - 1] if entry["position"] > 0 else None, "target_ms": target_ms} for entry in plan]
+
+
+def _seek_seconds(entry: dict, time_base: Fraction, file_start: Fraction) -> str:
+    """Seek between the previous presented frame and this one, so the first decoded frame kept is exactly this frame.
+    ffmpeg's input -ss counts from the file start time (the earliest stream start), not from timestamp 0."""
+    if entry["previous_pts"] is None:
+        seconds = entry["pts"] * time_base - Fraction(1, 1000)
+    else:
+        seconds = (entry["previous_pts"] + entry["pts"]) * time_base / 2
+    return f"{float(max(seconds - file_start, Fraction(0))):.6f}"
+
+
+def export_boundary_frames(record: dict, times_ms: list[int], destination: Path, *, runtime: MediaRuntime) -> dict:
+    """Write the frames around each boundary time as PNG into a new ``destination`` directory.
+
+    The label of each image is the PTS ffmpeg reports for the decoded frame (showinfo), checked against the
+    presented PTS from the packet probe; a mismatch is EXPORT_VALIDATION_FAILED, never a computed guess.
+    The original media is only read; ``destination`` must not exist yet (OUTPUT_EXISTS).
+    """
+    destination = Path(destination)
+    if destination.exists():
+        raise ContractError("OUTPUT_EXISTS", "the frame directory already exists; choose a new one", details={"path": str(destination)})
+    source = Path(verify_source(record, runtime.project_dir)["absolute_path"])
+    ffmpeg = _require_ffmpeg(runtime)
+    stream = stream_by_index(record["streams"], record["selected_video_stream"])
+    time_base = Fraction(stream["time_base"]["num"], stream["time_base"]["den"]) if stream.get("time_base") else None
+    if time_base is None:
+        raise ContractError("MEDIA_CLOCK_UNKNOWN", "the selected video stream has no time base", details={"media_id": record["media_id"]})
+    _, packets = probe_packets(source, record["selected_video_stream"], runtime, "frames-ffprobe-packets")
+    timeline = analyze_video_packets(packets)
+    if timeline["status"] != "ok":
+        raise ContractError("MEDIA_CLOCK_UNKNOWN" if timeline["status"] == "unknown" else "MEDIA_CLOCK_DISCONTINUITY",
+                            "the video timeline cannot be read frame by frame", details={"media_id": record["media_id"], "problem": timeline["problem"]})
+    clock = record["clock"]
+    if not clock["verified"]:
+        raise ContractError("MEDIA_CLOCK_UNKNOWN", "the media clock of this video is not verified; frames cannot be placed on the subtitle time line", details={"media_id": record["media_id"]})
+    origin_seconds = Fraction(clock["origin_pts"] * clock["origin_time_base_num"], clock["origin_time_base_den"])
+    starts = [parse_seconds(item.get("start_time")) for item in record["streams"]]
+    file_start = min((value for value in starts if value is not None), default=Fraction(0))
+    wanted: dict[int, dict] = {}
+    for target in sorted(set(int(value) for value in times_ms)):
+        for entry in boundary_frame_plan(timeline["pts"], time_base, origin_seconds, target):
+            wanted.setdefault(entry["pts"], {**entry, "purposes": []})["purposes"].append({"purpose": entry["purpose"], "target_ms": target})
+    pending = destination.with_name(destination.name + ".pending-" + new_id()[:8])
+    pending.mkdir(parents=True)
+    frames = []
+    try:
+        for pts, entry in sorted(wanted.items()):
+            name = f"frame-pts{pts}-tb{time_base.numerator}_{time_base.denominator}.png"
+            logs = run_tool(ffmpeg, ["-hide_banner", "-nostdin", "-loglevel", "info", "-copyts", "-ss", _seek_seconds(entry, time_base, file_start),
+                                     "-i", str(source), "-map", f"0:{record['selected_video_stream']}", "-vf", "showinfo", "-frames:v", "1", "-an", "-sn", "-dn",
+                                     "-f", "image2", "-update", "1", str(pending / name)], log_dir=runtime.log_dir, label=f"frame-{pts}", runtime=runtime)
+            found = _SHOWINFO_RE.search((logs / "stderr.log").read_text(encoding="utf-8", errors="replace"))
+            reported = int(found.group(2)) if found else None
+            if reported != pts or not (pending / name).is_file():
+                raise ContractError("EXPORT_VALIDATION_FAILED", "ffmpeg did not decode the frame that was asked for; no frame is labelled with a guessed time",
+                                    details={"expected_pts": pts, "reported_pts": reported, "media_id": record["media_id"]})
+            frames.append({"file": name, "pts": pts, "time_base_num": time_base.numerator, "time_base_den": time_base.denominator, "frame_ms": entry["frame_ms"],
+                           "pts_source": "ffmpeg_showinfo", "purposes": entry["purposes"], "sha256": sha256_file(pending / name)})
+        document = {"schema_version": SCHEMA_VERSION, "media_id": record["media_id"], "source_sha256": record["source_sha256"], "video_stream": record["selected_video_stream"],
+                    "times_ms": sorted(set(int(value) for value in times_ms)), "frames": frames, "created_at": utc_now(),
+                    "note": "frame_ms is the presented time on the canonical clock of this media (first presented video frame = 0); the image is the decoded frame with that PTS"}
+        atomic_write_text(pending / "frames.json", render_json(document))
+        os.replace(pending, destination)
+    except BaseException:
+        shutil.rmtree(pending, ignore_errors=True)
+        raise
+    return document

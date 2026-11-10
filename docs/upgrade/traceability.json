@@ -108,6 +108,9 @@
       ],
       "work_packages": [
         "W06"
+      ],
+      "notes": [
+        "W06: rule table QC01-QC23 with fixed default thresholds (null only turns soft hints off), quality_scope.json says what was not evaluated"
       ]
     },
     "FR09": {
@@ -205,6 +208,9 @@
       "work_packages": [
         "W06",
         "W08"
+      ],
+      "notes": [
+        "W06: review.html/review.csv/quality.json per machine and human revision; boundary frames on demand (review frames)"
       ]
     }
   },
@@ -369,7 +375,9 @@
       "verification": [
         "T03"
       ],
-      "status": "NOT_STARTED"
+      "status": "COMPLETED",
+      "completion_record": "docs/upgrade/completion-W06.md",
+      "note": "QC01-QC23 table-driven PASS (every hard error and soft hint class, unknown scores, cross-role overlap, OCR/ASR side by side); review.csv/review.html safety PASS; boundary frames labelled with the decoded PTS PASS on real FFmpeg (CFR/VFR/offset); QC21/QC22 interfaces ready, triggered by W07 exports; real engine outputs NOT_RUN (B01/B03, W09); command/location of frame export = CO-CAND-006"
     },
     "W07": {
       "title": "独立字幕/视频出口",
