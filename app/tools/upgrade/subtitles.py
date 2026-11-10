@@ -394,7 +394,7 @@ def ass_display_text(raw: str, wrap_style: int = 0) -> dict:
         if char == "\\" and position + 1 < length and raw[position + 1] in "Nnh":
             code = raw[position + 1]
             if not drawing:
-                out.append("\n" if code == "N" or (code == "n" and wrap_style == 2) else (" " if code == "n" else " "))
+                out.append("\n" if code == "N" or (code == "n" and wrap_style == 2) else (" " if code == "n" else "\u00a0"))
             position += 2
             continue
         if drawing:
@@ -488,10 +488,11 @@ def parse_ass_view(text: str) -> dict:
         fields = {name: (part if position == last else part.strip()) for position, (name, part) in enumerate(zip(event_format, parts))}
         by_lower = {name.lower(): value for name, value in fields.items()}
         start_ms, end_ms = _ass_time_ms(by_lower["start"]), _ass_time_ms(by_lower["end"])
-        if start_ms is None or end_ms is None:
-            _problem(problems, "QC02_TIME", number, "时间不是规范的 时:分:秒.厘秒（两位小数，分秒 00–59）", ordinal=ordinal, observed={"start": by_lower["start"], "end": by_lower["end"]})
-        elif end_ms <= start_ms:
-            _problem(problems, "QC02_TIME", number, "结束时间不晚于开始时间", ordinal=ordinal, observed={"start_ms": start_ms, "end_ms": end_ms})
+        if key == "dialogue":                       # a Comment is never shown: its times are kept as read and not judged
+            if start_ms is None or end_ms is None:
+                _problem(problems, "QC02_TIME", number, "时间不是规范的 时:分:秒.厘秒（两位小数，分秒 00–59）", ordinal=ordinal, observed={"start": by_lower["start"], "end": by_lower["end"]})
+            elif end_ms <= start_ms:
+                _problem(problems, "QC02_TIME", number, "结束时间不晚于开始时间", ordinal=ordinal, observed={"start_ms": start_ms, "end_ms": end_ms})
         shown = ass_display_text(by_lower["text"], wrap_style)
         layer = by_lower.get("layer")
         cues.append({"ordinal": ordinal, "cue_id": f"cue-{ordinal + 1:06d}", "kind": key, "line": number, "start_ms": start_ms, "end_ms": end_ms, "text": shown["text"],

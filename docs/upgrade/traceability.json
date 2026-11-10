@@ -65,6 +65,9 @@
       "work_packages": [
         "W05",
         "W08"
+      ],
+      "notes": [
+        "W05: review session / whole-file import / explicit attestation / revision resolution implemented and verified on fixtures (T05-W05); GUI entry W08; real Subtitle Edit / Aegisub round trip pending W09"
       ]
     },
     "FR06": {
@@ -77,6 +80,9 @@
       "work_packages": [
         "W02",
         "W05"
+      ],
+      "notes": [
+        "W05: human files are immutable whole-file revisions; their hashes are unchanged after re-recognition, re-translation and a dictionary change, and nothing merges into them (T05-W05)"
       ]
     },
     "FR07": {
@@ -90,7 +96,8 @@
         "W05"
       ],
       "notes": [
-        "W04: implemented and verified with fixtures/loopback; real engines pending W09"
+        "W04: implemented and verified with fixtures/loopback; real engines pending W09",
+        "W05: a corrected source file becomes a complete human SourceRevision and is re-translated through supplied_source without OCR/ASR and without reusing old word clocks (T05-W05)"
       ]
     },
     "FR08": {
@@ -122,6 +129,9 @@
       "work_packages": [
         "W05",
         "W07"
+      ],
+      "notes": [
+        "W05: hash-verified revision resolution and independent version selection implemented (a superseded human revision still resolves); the export action itself is W07"
       ]
     },
     "FR11": {
@@ -343,7 +353,9 @@
       "verification": [
         "T05"
       ],
-      "status": "NOT_STARTED"
+      "status": "COMPLETED",
+      "completion_record": "docs/upgrade/completion-W05.md",
+      "note": "T05 part owned by W05 PASS on fixtures built in the file shapes of Subtitle Edit/Aegisub and on machine revisions produced by the real pipeline; real editors NOT_RUN (B05, W09); export of human files is W07; legacy-task migration case of T05 is W08; interface additions recorded as CO-CAND-005"
     },
     "W06": {
       "title": "质量规则与人工定位",

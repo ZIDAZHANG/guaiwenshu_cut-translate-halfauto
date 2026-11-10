@@ -2,7 +2,7 @@
   "schema_version": 2,
   "record_kind": "validation_ledger",
   "plan_section": "14.5",
-  "updated_at": "2026-11-10T09:00:00Z",
+  "updated_at": "2026-11-10T11:04:09Z",
   "entries": [
     {
       "test_id": "LEGACY-22-NOYAML",
@@ -221,6 +221,32 @@
       "remaining_limitations": "protocol only: no real llama-server or Sakura model on the execution machine (B01); assumptions Q-W04-2 pending W09"
     },
     {
+      "test_id": "T05-W05",
+      "requirement_ids": [
+        "FR05",
+        "FR06",
+        "FR07",
+        "FR10"
+      ],
+      "build_sha": "W05 working tree on top of 7b146e9 (see completion-W05.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {
+        "subtitle_samples": "built inside tests/upgrade_revisions_test.py in the file shapes of Subtitle Edit / Aegisub (CRLF, BOM, UTF-16, cp932, Aegisub Project Garbage, comments, override tags, drawings); not saved by the real editors",
+        "machine_revisions": "produced per test by the real eight-stage queue (real FFmpeg/ffprobe; recognition engines stood in at the process boundary; scripted loopback model server)"
+      },
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-10T11:04:09Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_revisions_test.py",
+        "LOCAL_WORKSPACE/roast-w05-tests-summary.json"
+      ],
+      "observed": "SRT with changed text/time, split and renumbered cues registered whole (byte-identical, partial provenance, only unique identical cues exact); ASS registered with BOM, custom style, Script Info change, unknown section, comment, override tags and drawing byte-preserved; UTF-16 stored untranscoded, cp932 only with an explicit codec; structural errors (QC01/QC02/QC03) kept as a candidate without a revision; file changing during the copy, a real Windows byte-range lock and swapped bytes all -> REVIEW_FILE_BUSY with nothing left behind; attestation needs explicit scopes, binds revision+file hash+media and never happens implicitly; after a rerun with other timing and a new dictionary the human files' hashes are unchanged, BASE_SUPERSEDED is reported and a new session from the old human revision still works; a corrected source file becomes a new SourceRevision, supplied_source skips OCR/ASR, sends the human text for translation and reuses no word clock; session/base/media mismatch, unknown media, changed or deleted video have deterministic errors with QC21; CLI returns one JSON document and the documented exit codes; no module other than the user's attest command can reach attest_revision",
+      "expected": "plan 9.1-9.4, 11.2 (QC01/02/03/06/20/21/23), 12.1 and the W05 acceptance list",
+      "remaining_limitations": "samples are hand-built, not saved by Subtitle Edit/Aegisub (B05, W09); 'old human file can still be exported' is verified up to hash-checked resolution and a new session, the export action is W07; the legacy-task migration case of T05 is W08; GUI entry is W08"
+    },
+    {
       "test_id": "T03",
       "requirement_ids": [
         "FR02",
@@ -281,7 +307,7 @@
       "evidence_paths": [],
       "observed": "",
       "expected": "",
-      "remaining_limitations": "W05/W08 实施后运行"
+      "remaining_limitations": "W05 part PASS (T05-W05): SRT/ASS edits, superseded base, missing sidecar, file being written, media mismatch, corrected source; still open: legacy-task migration with unchanged old hashes (W08), export of a superseded human file (W07), real editors (W09) - overall T05 stays NOT_RUN until then"
     },
     {
       "test_id": "T06",

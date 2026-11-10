@@ -262,10 +262,105 @@ def cmd_inbox_intake(args: argparse.Namespace) -> int:
     return EXIT_OK if not failed else EXIT_DATA
 
 
+# --------------------------------------------------------------------------- human revisions (W05, plan 9 / 12.1)
+
+def _revision_summary(config: dict, project_id: str, revision_id: str) -> tuple[dict, list, list]:
+    """ids / artifact_refs / warnings describing one committed revision: file refs are project-relative, nothing is re-serialized."""
+    from upgrade import revisions
+    from upgrade.runner import project_dir
+    from upgrade.contracts import load_record
+    resolved = revisions.resolve_revision(config["data_root"], project_id, revision_id)
+    manifest = resolved["manifest"]
+    project = project_dir(config["data_root"], project_id)
+    fmt, ref = next(iter(sorted(resolved["subtitle_files"].items())))
+    report = load_record("QualityReport", project / resolved["directory"] / revisions.QUALITY_NAME)
+    counts = {severity: sum(1 for issue in report["issues"] if issue["severity"] == severity) for severity in ("ERROR", "WARNING", "INFO")}
+    confirmation = resolved["confirmations"][fmt]
+    ids = {"project_id": project_id, "revision_id": revision_id, "kind": resolved["kind"], "media_id": resolved["media_id"],
+           "base_revision_id": manifest.get("base_revision_id", manifest.get("parent_revision_id")), "format": fmt,
+           "directory": resolved["directory"], "subtitle_sha256": ref["sha256"], "provenance_status": manifest["provenance_status"],
+           "structural_status": report["structural_status"], "human_status": confirmation["human_status"], "confirmed_scopes": confirmation["confirmed_scopes"],
+           "issue_counts": counts}
+    warnings = list(resolved["notices"])
+    listed = [issue for issue in report["issues"] if issue["severity"] == "WARNING"]
+    warnings += [{"code": issue["rule_id"], "severity": issue["severity"], "message": issue["message"], "cue_ids": issue["cue_ids"]} for issue in listed[:20]]
+    if len(listed) > 20:
+        warnings.append({"code": "MORE_WARNINGS", "count": len(listed) - 20, "message": "更多提示见该版本目录下的 quality.json"})
+    return ids, [ref], warnings
+
+
+def cmd_review_create(args: argparse.Namespace) -> int:
+    from upgrade import revisions
+    from upgrade.runner import project_dir
+    from upgrade.storage import safe_join
+    config = _data_root_config(args.data_root)
+    session = revisions.create_session(config["data_root"], args.project, args.revision, args.format)
+    edit_file = safe_join(project_dir(config["data_root"], args.project), session["edit_relative_path"])
+    _emit(_result("review.create", ok=True, ids={
+        "project_id": args.project, "session_id": session["session_id"], "base_revision_id": session["base_revision_id"], "media_id": session["media_id"],
+        "format": session["format"], "base_subtitle_sha256": session["base_subtitle_sha256"], "edit_relative_path": session["edit_relative_path"],
+        "edit_file": str(edit_file)}))
+    return EXIT_OK
+
+
+def _import_revision(args: argparse.Namespace, kind: str) -> tuple[dict, dict, dict, list, list]:
+    from upgrade import revisions
+    config = _data_root_config(args.data_root)
+    manifest = revisions.import_revision(config["data_root"], args.project, args.media, Path(args.file), kind, base_revision_id=args.base,
+                                         session_id=args.session, encoding=args.encoding, rule_config=config["quality"])
+    ids, refs, warnings = _revision_summary(config, args.project, manifest["revision_id"])
+    ids["session_id"] = args.session
+    ids["encoding"] = manifest["encoding"] if kind == "review" else manifest["extensions"]["encoding"]
+    return config, manifest, ids, refs, warnings
+
+
+def cmd_review_import(args: argparse.Namespace) -> int:
+    _, _, ids, refs, warnings = _import_revision(args, "review")
+    _emit(_result("review.import", ok=True, ids=ids, artifact_refs=refs, warnings=warnings))
+    return EXIT_OK
+
+
+def cmd_source_import(args: argparse.Namespace) -> int:
+    from upgrade.contracts import load_record
+    from upgrade.runner import project_dir
+    from upgrade.source import SEGMENTS_NAME
+    config, manifest, ids, refs, warnings = _import_revision(args, "source")
+    segment_set = load_record("SegmentSet", project_dir(config["data_root"], args.project) / ids["directory"] / SEGMENTS_NAME)
+    ids["segments"] = len(segment_set["segments"])
+    ids["omitted_events"] = len(segment_set["extensions"]["omitted_events"])
+    # A new machine translation is never started from here: it is the user's explicit next command (plan 3.2 / 9.4).
+    ids["next_command"] = ["submit", "--mode", "supplied_source", "--project", args.project, "--source-revision", manifest["revision_id"]]
+    _emit(_result("source.import", ok=True, ids=ids, artifact_refs=refs, warnings=warnings))
+    return EXIT_OK
+
+
+def cmd_review_attest(args: argparse.Namespace) -> int:
+    """User entry only (plan 12.1): nothing in the pipeline calls this to produce a human confirmation."""
+    from upgrade import revisions
+    config = _data_root_config(args.data_root)
+    scopes = [item.strip() for item in args.scopes.split(",")]
+    record = revisions.attest_revision(config["data_root"], args.project, args.revision, scopes, args.note or "", fmt=args.format)
+    resolved = revisions.resolve_revision(config["data_root"], args.project, args.revision)
+    fmt = next(fmt for fmt, ref in resolved["subtitle_files"].items() if ref["sha256"] == record["subtitle_sha256"] and (args.format in (None, fmt)))
+    confirmation = resolved["confirmations"][fmt]
+    _emit(_result("review.attest", ok=True, ids={
+        "project_id": args.project, "revision_id": args.revision, "attestation_id": record["attestation_id"], "media_id": record["media_id"], "format": fmt,
+        "subtitle_sha256": record["subtitle_sha256"], "scopes": record["scopes"], "human_status": confirmation["human_status"],
+        "confirmed_scopes": confirmation["confirmed_scopes"]}, warnings=list(resolved["notices"])))
+    return EXIT_OK
+
+
 # --------------------------------------------------------------------------- parser
 
+class _Parser(argparse.ArgumentParser):
+    """Argument errors are answered like every other refusal: one OperationResult on stdout and exit code 2 (plan 12.1)."""
+
+    def error(self, message: str):
+        raise ContractError("CONFIG_UNSUPPORTED_COMMAND", f"{self.prog}: {message}", details={"usage": " ".join(self.format_usage().split())})
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="roast", description="字幕烤肉助手 v2 命令行（计划 1.1 第 12.1 节）。每条命令在 stdout 输出一份 OperationResult JSON。")
+    parser = _Parser(prog="roast", description="字幕烤肉助手 v2 命令行（计划 1.1 第 12.1 节）。每条命令在 stdout 输出一份 OperationResult JSON。")
     sub = parser.add_subparsers(dest="group", required=True)
 
     config_parser = sub.add_parser("config", help="配置文件与数据根")
@@ -349,6 +444,36 @@ def build_parser() -> argparse.ArgumentParser:
     inbox_intake.add_argument("--config", required=True)
     inbox_intake.add_argument("--inbox", required=True)
     inbox_intake.set_defaults(func=cmd_inbox_intake)
+
+    review_parser = sub.add_parser("review", help="人工校对：创建校对副本、登记校对稿、标记人工确认")
+    review_sub = review_parser.add_subparsers(dest="command", required=True)
+    review_create = review_sub.add_parser("create", help="从一个已提交版本的字幕文件创建校对副本（edit 文件是唯一交给编辑器修改的文件）")
+    review_create.add_argument("--data-root", required=True)
+    review_create.add_argument("--project", required=True)
+    review_create.add_argument("--revision", required=True, help="具体版本 ID；没有 latest")
+    review_create.add_argument("--format", required=True, choices=("srt", "ass"))
+    review_create.set_defaults(func=cmd_review_create)
+    review_import = review_sub.add_parser("import", help="把已保存的中文 SRT/ASS 原字节登记为不可变的人工版本（不改原文件）")
+    source_parser = sub.add_parser("source", help="日文原文修订")
+    source_sub = source_parser.add_subparsers(dest="command", required=True)
+    source_import = source_sub.add_parser("import", help="把已保存的源字幕登记为新的源版本；据此生成新译文需另行 submit --mode supplied_source")
+    for importer, func in ((review_import, cmd_review_import), (source_import, cmd_source_import)):
+        importer.add_argument("--data-root", required=True)
+        importer.add_argument("--project", required=True)
+        importer.add_argument("--media", required=True, help="这份字幕对应的媒体版本 ID；不同视频不视为同一时间轴")
+        importer.add_argument("--file", required=True)
+        importer.add_argument("--base", default=None, help="可选：这份稿子所基于的版本 ID")
+        importer.add_argument("--session", default=None, help="可选：创建校对副本时得到的 session ID；与 --base 同时给出时必须一致")
+        importer.add_argument("--encoding", default=None, help="可选：Python 编码名；默认只认 BOM/UTF-8")
+        importer.set_defaults(func=func)
+    review_attest = review_sub.add_parser("attest", help="用户对一个具体版本的字幕字节标记人工确认范围（不改变任何字幕文件）")
+    review_attest.add_argument("--data-root", required=True)
+    review_attest.add_argument("--project", required=True)
+    review_attest.add_argument("--revision", required=True)
+    review_attest.add_argument("--scopes", required=True, help="明确列出的非空子集，逗号分隔：text,timing,style（SRT 没有 style）")
+    review_attest.add_argument("--format", default=None, choices=("srt", "ass"), help="版本含多个字幕文件（机器版）时指明确认哪一个")
+    review_attest.add_argument("--note", default=None)
+    review_attest.set_defaults(func=cmd_review_attest)
     return parser
 
 
@@ -374,7 +499,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
-    except SystemExit as exc:
+    except ContractError as exc:                 # unknown command or option (for example a v1 flag such as --zh-file): refused, never reinterpreted
+        _log(str(exc))
+        _emit(_result("arguments", ok=False, error=exc))
+        return EXIT_ARGS
+    except SystemExit as exc:                    # --help
         return EXIT_ARGS if exc.code not in (0, None) else EXIT_OK
     operation = f"{args.group}.{getattr(args, 'command', 'run')}"
     try:
