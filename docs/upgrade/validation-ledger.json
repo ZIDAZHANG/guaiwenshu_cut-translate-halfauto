@@ -2,7 +2,7 @@
   "schema_version": 2,
   "record_kind": "validation_ledger",
   "plan_section": "14.5",
-  "updated_at": "2026-11-10T13:46:21Z",
+  "updated_at": "2026-11-10T13:58:19Z",
   "entries": [
     {
       "test_id": "LEGACY-22-NOYAML",
@@ -298,6 +298,31 @@
       "remaining_limitations": "synthetic pictures only, frame comparison automated (no human visual review); FFmpeg is a 2024-09 gyan.dev git build, not n7.1; real editors' round trip (Aegisub render comparison) is T08/W09; no font attachment list (B07); export location CO-CAND-007"
     },
     {
+      "test_id": "T05-W08",
+      "requirement_ids": [
+        "FR05",
+        "FR13",
+        "FR16"
+      ],
+      "build_sha": "W08 working tree on top of 841b26d (see completion-W08.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "input_hashes": {
+        "legacy_job": "built in tests/upgrade_gui_migrate_test.py in the shape of app/work/<job> (task.json, job_manifest.json, subs/, deliverables/, source/, logs/)",
+        "machine_revisions": "produced by the real eight-stage queue (engines stood in at the process boundary, scripted loopback model server)"
+      },
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-10T13:58:19Z",
+      "status": "PASS",
+      "evidence_paths": [
+        "tests/upgrade_gui_migrate_test.py",
+        "LOCAL_WORKSPACE/roast-w08-tests-summary.json"
+      ],
+      "observed": "migration: every old file keeps its hash and mtime before/after and after a later registration; small files byte-copied, video only referenced and registered as media; old DONE gives no v2 revision; a hand-edited old file registered explicitly is unmapped/PARTIAL; a non-task directory creates no project. panel on a real data root: two formats need an explicit choice, the editor gets only the working copy, registered = PARTIAL with empty scopes, REVIEWED only after text+timing, export names the chosen revision, a corrected source is not translated until the explicit second step",
+      "expected": "plan 9.6 migration rules; 3.2/3.3 button conditions and wording; W08 acceptance list",
+      "remaining_limitations": "real Subtitle Edit / Aegisub round trips are T08 (W09, B05); new-task dialog and queue operations not in the panel yet (Q-W08-1)"
+    },
+    {
       "test_id": "T03",
       "requirement_ids": [
         "FR02",
@@ -364,7 +389,7 @@
       "evidence_paths": [],
       "observed": "",
       "expected": "",
-      "remaining_limitations": "W05 part PASS (T05-W05): SRT/ASS edits, superseded base, missing sidecar, file being written, media mismatch, corrected source; still open: legacy-task migration with unchanged old hashes (W08), export of a superseded human file (W07), real editors (W09) - overall T05 stays NOT_RUN until then"
+      "remaining_limitations": "revision/import/confirmation part PASS (T05-W05), legacy-task migration part PASS (T05-W08), human files export through W07 (a superseded one not tested separately); stays NOT_RUN as a group until the real editors are used (T08/W09, B05)"
     },
     {
       "test_id": "T06",

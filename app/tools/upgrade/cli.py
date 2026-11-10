@@ -448,6 +448,66 @@ def cmd_export(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+# --------------------------------------------------------------------------- listing and migration (W08, plan 3.2 / 9.6)
+
+def cmd_revisions_list(args: argparse.Namespace) -> int:
+    """Read-only view of one project's committed revisions for the window (and for people): kind, formats, hash prefix, status."""
+    from upgrade import revisions
+    from upgrade.contracts import load_record
+    from upgrade.runner import load_project, project_dir
+    config = _data_root_config(args.data_root)
+    record = load_project(config["data_root"], args.project)
+    project = project_dir(config["data_root"], args.project)
+    rows, warnings = [], []
+    for key, kind in (("machine_revision_ids", "machine"), ("source_revision_ids", "source"), ("review_revision_ids", "review")):
+        for revision_id in record[key]:
+            try:
+                resolved = revisions.resolve_revision(config["data_root"], args.project, revision_id)
+                report = load_record("QualityReport", project / resolved["directory"] / revisions.QUALITY_NAME)
+            except ContractError as exc:
+                rows.append({"revision_id": revision_id, "kind": kind, "error": exc.code, "message": exc.message})
+                continue
+            manifest = resolved["manifest"]
+            rows.append({
+                "revision_id": revision_id, "kind": kind, "origin": "machine" if kind == "machine" else manifest.get("origin", "human"), "media_id": resolved["media_id"],
+                "created_at": manifest["created_at"], "directory": resolved["directory"], "base_revision_id": manifest.get("base_revision_id", manifest.get("parent_revision_id")),
+                "source_revision_id": manifest.get("source_revision_id"), "structural_status": report["structural_status"],
+                "issue_counts": {severity: sum(1 for issue in report["issues"] if issue["severity"] == severity) for severity in ("ERROR", "WARNING", "INFO")},
+                "formats": {fmt: {"path": ref["path"], "sha256_12": ref["sha256"][:12], "human_status": resolved["confirmations"][fmt]["human_status"],
+                                  "confirmed_scopes": resolved["confirmations"][fmt]["confirmed_scopes"]} for fmt, ref in sorted(resolved["subtitle_files"].items())},
+                "report_html": f"{resolved['directory']}/review.html" if (project / resolved["directory"] / "review.html").is_file() else None,
+                "notices": resolved["notices"]})
+    _emit(_result("revisions.list", ok=True, ids={"project_id": args.project, "display_name": record["display_name"], "media_ids": record["media_ids"],
+                                                  "export_ids": record["export_ids"], "legacy_import": (record.get("extensions") or {}).get("legacy_import"),
+                                                  "revisions": rows}, warnings=warnings))
+    return EXIT_OK
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    from upgrade import media, migrate
+    from upgrade.contracts import new_id
+    from upgrade.stages import resolve_roles
+    config = _data_root_config(args.data_root)
+    warnings: list[dict] = []
+    register = None
+    if not args.no_media:
+        roles = resolve_roles(config, {"config_snapshot": {"engine_settings": _engine_settings_for(config)}, "resource_refs": []}, ["ffprobe"])
+
+        def register(project_id: str, project: Path, video: Path) -> str | None:
+            runtime = media.MediaRuntime(project_dir=project, ffprobe=roles["ffprobe"], log_dir=project / "logs" / f"migrate-{new_id()}", owner_token="migrate")
+            try:
+                return media.probe_media({"input": {"kind": "local_video", "value": str(video), "source_media_id": None}, "selected_video_stream": None,
+                                          "selected_audio_stream": None, "project_id": project_id, "extensions": {}}, runtime=runtime)["media_id"]
+            except ContractError as exc:      # the media stays a reference; the migration itself does not depend on it
+                warnings.append({"code": exc.code, "message": "原视频没有登记为媒体（" + exc.message + "）；需要时请在新项目里另行登记"})
+                return None
+    result = migrate.migrate_job(config["data_root"], Path(args.legacy_job), display_name=args.display_name, register_media=register)
+    warnings.append({"code": "LEGACY_NOT_REVIEWED", "message": "旧任务的字幕只作为未审快照列出，旧的“完成”不等于新版完成；有手改的文件请用 review import 登记"})
+    _emit(_result("migrate", ok=True, ids={"project_id": result["project_id"], "media_id": result["media_id"], "legacy_manifest": "legacy/source-manifest.json",
+                                           **migrate.legacy_summary(result["manifest"])}, warnings=warnings))
+    return EXIT_OK
+
+
 # --------------------------------------------------------------------------- parser
 
 class _Parser(argparse.ArgumentParser):
@@ -595,6 +655,18 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument("--accept-omitted-drawings", action="store_true", help="ASS→SRT 时确认省略绘图事件")
     export_parser.add_argument("--font-dir", action="append", default=None, help="额外的字体目录（可重复）；此外只查系统字体目录")
     export_parser.set_defaults(func=cmd_export)
+    revisions_parser = sub.add_parser("revisions", help="查看一个项目里已提交的版本")
+    revisions_sub = revisions_parser.add_subparsers(dest="command", required=True)
+    revisions_list = revisions_sub.add_parser("list", help="列出机器/源/人工版本：格式、哈希前 12 位、人工状态、质量状态（只读）")
+    revisions_list.add_argument("--data-root", required=True)
+    revisions_list.add_argument("--project", required=True)
+    revisions_list.set_defaults(func=cmd_revisions_list)
+    migrate_parser = sub.add_parser("migrate", help="把一个旧任务目录只读导入为新项目（旧目录不改；旧字幕只作未审快照）")
+    migrate_parser.add_argument("--data-root", required=True)
+    migrate_parser.add_argument("--legacy-job", required=True, help="旧任务目录（含 task.json）")
+    migrate_parser.add_argument("--display-name", default=None)
+    migrate_parser.add_argument("--no-media", action="store_true", help="只引用原视频，不登记为媒体")
+    migrate_parser.set_defaults(func=cmd_migrate)
     return parser
 
 

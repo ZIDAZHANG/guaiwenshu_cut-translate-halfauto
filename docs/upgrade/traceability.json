@@ -16,6 +16,9 @@
       "work_packages": [
         "W03",
         "W08"
+      ],
+      "notes": [
+        "W08: v2 panel as a new tab of the existing tkinter window"
       ]
     },
     "FR02": {
@@ -170,6 +173,9 @@
       ],
       "work_packages": [
         "W08"
+      ],
+      "notes": [
+        "W08: read-only legacy migration (roast migrate / 导入旧任务), old directory hash-checked before and after"
       ]
     },
     "FR14": {
@@ -214,7 +220,8 @@
         "W08"
       ],
       "notes": [
-        "W06: review.html/review.csv/quality.json per machine and human revision; boundary frames on demand (review frames)"
+        "W06: review.html/review.csv/quality.json per machine and human revision; boundary frames on demand (review frames)",
+        "W08: review report, working copy, editor hand-off, registration and confirmation from the window"
       ]
     }
   },
@@ -418,7 +425,9 @@
         "T05",
         "T08"
       ],
-      "status": "NOT_STARTED"
+      "status": "PARTIAL",
+      "completion_record": "docs/upgrade/completion-W08.md",
+      "note": "task-detail buttons of 3.2 with their conditions, status wording of 3.3, source revision branch, explicit exports and read-only legacy migration done; new-task dialog, queue operations, resource relocation and dictionary-warning UI not done (Q-W08-1, command line meanwhile); real editors T08 in W09"
     },
     "W09": {
       "title": "真引擎、编辑器和便携候选验收",
@@ -433,7 +442,17 @@
         "T08",
         "T09"
       ],
-      "status": "NOT_STARTED"
+      "status": "BLOCKED",
+      "blocked_by": [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B08",
+        "B09"
+      ],
+      "blocked_record": "docs/upgrade/blocked-W09-W10.md"
     },
     "W10": {
       "title": "最终交付、GitHub 开源发布准备和回滚材料",
@@ -446,7 +465,12 @@
       "verification": [
         "第16/19节清单"
       ],
-      "status": "NOT_STARTED"
+      "status": "BLOCKED",
+      "blocked_by": [
+        "B07",
+        "B10"
+      ],
+      "blocked_record": "docs/upgrade/blocked-W09-W10.md"
     }
   },
   "verification_groups": {

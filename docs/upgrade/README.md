@@ -21,6 +21,8 @@
 | `completion-W05.md` | W05 完成报告（校对副本、人工中文稿/原文改稿整文件登记、对应关系、确认、版本解析） | W05 |
 | `completion-W06.md` | W06 完成报告（QC01–QC23 规则表、review.csv/review.html/quality_scope.json、按需边界帧） | W06 |
 | `completion-W07.md` | W07 完成报告（字幕原字节导出与显式转换、MP4 硬字幕、MKV 软字幕、字体检查、输出校验、M2） | W07 |
+| `completion-W08.md` | W08 完成报告（PARTIAL：旧窗口新选项卡、任务详情按钮、原文修订分支、旧任务只读迁移） | W08 |
+| `blocked-W09-W10.md` | W09/W10 阻塞登记（真实引擎、编辑器、干净机、许可证需负责人提供） | W09/W10 |
 
 不入库的私有快照（`.gitignore` 排除 `*.private.json`）：`effective-config.private.json`、`resources-inventory.private.json`，保存执行机的实际绝对路径。
 

@@ -178,6 +178,19 @@ D01–D20、FR01–FR16、QC01–QC23、W00–W10、T01–T09、B01–B11 全部
 | IF-60 | QC21 在导出时检查：`--media` 与字幕绑定的媒体不同 → `MEDIA_CHANGED`（`rule_id=QC21_MEDIA_BINDING`）；QC22 由导出时的字体检查驱动（成片 ERROR / 字幕 WARNING），结果写入 `quality_snapshot.export_issues` | 11.2 QC21/QC22 |
 | EV-07 | 证据：`tests/upgrade_export_test.py`（7 个用例：真实八阶段流水线产出 + 真实 FFmpeg/ffprobe；合成画面，含 S06 形态的人工 ASS）；全套汇总 `LOCAL_WORKSPACE/roast-w07-tests-summary.json` | 14.3 T06 |
 
+## 5h. W08 记录（2026-11-11）
+
+| 编号 | 决定/事实 | 依据 |
+| --- | --- | --- |
+| IF-61 | 旧窗口只新增一个“新版项目与校对”选项卡（`_build_v2_tab`），由 `upgrade/gui.py` 的 `V2Panel` 提供；v2 代码加载失败时旧窗口照常工作 | D01、3 节"不更换现有窗口框架" |
+| IF-62 | 面板的每个操作都通过子进程运行 `python -m upgrade.cli` 并显示其 JSON 结果；面板只读项目索引，不引入 `revisions` | 12.1、W05 隔离规则 |
+| IF-63 | 面板设置（数据根、编辑器路径）存在 `app/config/roast_v2_gui.local.json`，不读写旧配置 | W08 验收"旧配置未重写" |
+| IF-64 | 编辑器以分离进程启动，参数只有校对副本路径；不等待、不监视、不保存进程句柄；未配置时让用户选，取消则打开副本所在文件夹 | 3.2"用编辑器打开"、D03 |
+| IF-65 | `revisions list`（只读）供窗口列出版本；`migrate --data-root DIR --legacy-job DIR [--display-name] [--no-media]`（计划 12.1 写作 `--config FILE`；为与其他 v2 命令一致使用 `--data-root`） | 12.1 |
+| IF-66 | 迁移：小文本文件（json/jsonl/srt/ass/ssa/csv/txt/log，≤ 20 MiB）逐字节复制到 `legacy/files/`，其余文件只记哈希；原视频登记为媒体（失败只记提示，不影响迁移）；旧字幕只列为 `UNREVIEWED_LEGACY_SNAPSHOT` | 9.6 |
+| Q-W08-1 | 面板尚未提供“新任务”对话框与队列操作（开始/停止/跳过/恢复/复制为新任务）、资源重新定位与词典警告确认的界面；这些目前用命令行完成。W08 因此登记为 PARTIAL | 3.1、3.2、W08 任务 |
+| EV-08 | 证据：`tests/upgrade_gui_migrate_test.py`（7 个用例：按钮规则、状态措辞、旧窗口静态核对、真实数据根上驱动面板、迁移与旧目录不变）；全套汇总 `LOCAL_WORKSPACE/roast-w08-tests-summary.json` | 14.3 T05/T08 |
+
 ## 6. 不做的事（W00 重申）
 
 不删除 VoiceTransl/剪映相关源码，不为商用换模型，不更新全局 Python，不重写分段算法，不下载模型，不修改 D 盘旧目录、原媒体、旧词典，不在用户文档目录写入任何文件。
