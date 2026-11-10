@@ -161,6 +161,23 @@ D01–D20、FR01–FR16、QC01–QC23、W00–W10、T01–T09、B01–B11 全部
 | Q-W04-1 | 仍待负责人决定（ASS 10 ms 量化的画面时间与 1 ms 规范容差），本包按字面实现：ASS 文件用 10 ms 容差，机器 ASS 与分段的时间比较允许 9 ms | W04 记录 |
 | EV-06 | 证据：`tests/upgrade_quality_test.py`（18 个用例，表驱动 + 真实 ffmpeg 边界帧 + 真实流水线）、`tests/upgrade_stages_test.py`；全套汇总 `LOCAL_WORKSPACE/roast-w06-tests-summary.json` | 14.3 T03 |
 
+## 5g. W07 记录（2026-11-11）
+
+| 编号 | 决定/事实 | 依据 |
+| --- | --- | --- |
+| IF-51 | 导出流程放在新模块 `upgrade/export.py`（计划第 5 节写作 `media.export_media`）：`media.py` 已承担探测/派生/边界帧，且只有 `cli.py` 可以引入 `revisions`，所以由命令行解析版本后把 `ResolvedRevision` 交给 `export.run_export()` | 5 节模块表、W05 隔离规则 |
+| IF-52 | 导出目录就是用户的 `--destination`（必须是新目录；先写同级 `.<名>.pending-<id>/`，校验后整体改名）；项目内 `exports/<export_id>/location.json` 记录位置、manifest 哈希、版本与类型，`project.json.export_ids` 追加 | 4.2、4.3、6.6 `destination_root` |
+| CO-CAND-007 | **导出文件的存放位置**：计划 4.2 把 `exports/<export_id>/` 列在项目目录里，同时 ExportRequest 有 `destination_root`。本包把输出直接写到用户选的目录、项目里只留位置记录，避免成片在数据根里再存一份。待负责人确认；若要求项目内保存，改 `_record` 与目标路径即可 | 4.2 与 6.6 的两种写法 |
+| IF-53 | 视频导出一律 `-copyts`；字幕零点 = 首个显示视频帧的时间戳。硬字幕：首帧时间不为 0 时在 `subtitles` 滤镜前后各用一次 `setpts` 平移；软字幕：`-itsoffset <首帧时间>` 只作用于字幕输入。事实：不用 `-copyts` 时 MKV 封装器会为 AAC 预滚把所有流整体后移约 21 ms | 6.3 规范时钟、7.5 |
+| IF-54 | 机器版本（同时有 SRT 与 ASS）导出视频时缺省用 ASS（保留层与样式），`--format srt` 可改；字幕导出缺省两个都给 | 9.5"机器版同时提供SRT/ASS" |
+| IF-55 | MKV 字幕轨语言写作 `chi`（Matroska 使用 ISO 639-2 代码；计划写作"zh"） | 7.5 `mkv_soft_v1` |
+| IF-56 | 字体：只查 `--font-dir` 与 Windows 系统/用户字体目录；按 `name` 表（ID 1/4/6/16）匹配，按 `cmap` 格式 4/12 检查字形；样式字体检查用该样式的字幕文字，行内 `\fn` 字体按整条字幕文字检查（只会多报）。硬字幕把匹配到的字体文件复制进 ASCII 工作目录 `fonts/` 供 libass 使用；软字幕不附任何字体 | 7.5 字体段、B07 |
+| IF-57 | 格式转换只在 `--convert-to` 明确给出时进行：ASS→SRT 有绘图事件时还需 `--accept-omitted-drawings`；派生文件名 `<名>.derived.<格式>`，`lossy` 如实标注，状态 `UNREVIEWED`，原确认只以 `referenced_confirmations` 引用；机器版本拒绝转换（已有两种格式） | 9.5 |
+| IF-58 | 输出校验项目：流数量与编码、默认/强制/语言、时长容差 `max(最大帧间隔, 50 ms)`（最大帧间隔取源的 `frame_timing`）、软字幕提取比对（相对输出首帧；ASS 10 ms、SRT 1 ms）。失败一律 `EXPORT_VALIDATION_FAILED`，候选保留 | 7.5 |
+| IF-59 | 编码进度用 `-progress pipe:1` 写入进程日志；本包没有界面进度（W08） | 7.5 |
+| IF-60 | QC21 在导出时检查：`--media` 与字幕绑定的媒体不同 → `MEDIA_CHANGED`（`rule_id=QC21_MEDIA_BINDING`）；QC22 由导出时的字体检查驱动（成片 ERROR / 字幕 WARNING），结果写入 `quality_snapshot.export_issues` | 11.2 QC21/QC22 |
+| EV-07 | 证据：`tests/upgrade_export_test.py`（7 个用例：真实八阶段流水线产出 + 真实 FFmpeg/ffprobe；合成画面，含 S06 形态的人工 ASS）；全套汇总 `LOCAL_WORKSPACE/roast-w07-tests-summary.json` | 14.3 T06 |
+
 ## 6. 不做的事（W00 重申）
 
 不删除 VoiceTransl/剪映相关源码，不为商用换模型，不更新全局 Python，不重写分段算法，不下载模型，不修改 D 盘旧目录、原媒体、旧词典，不在用户文档目录写入任何文件。

@@ -134,7 +134,8 @@
         "W07"
       ],
       "notes": [
-        "W05: hash-verified revision resolution and independent version selection implemented (a superseded human revision still resolves); the export action itself is W07"
+        "W05: hash-verified revision resolution and independent version selection implemented (a superseded human revision still resolves); the export action itself is W07",
+        "W07: export --kind subtitles|mp4_burn|mkv_soft from an explicit revision, destination created once, manifest with per-file human status"
       ]
     },
     "FR11": {
@@ -145,6 +146,9 @@
       ],
       "work_packages": [
         "W07"
+      ],
+      "notes": [
+        "W07: mp4_burn_sdr_v1 / mkv_soft_v1 with -copyts and the first-frame clock, validation per 7.5 incl. MKV subtitle extraction"
       ]
     },
     "FR12": {
@@ -394,7 +398,9 @@
         "T06"
       ],
       "milestone": "M2",
-      "status": "NOT_STARTED"
+      "status": "COMPLETED",
+      "completion_record": "docs/upgrade/completion-W07.md",
+      "note": "M2 reached at command-line level: subtitle bytes exported once with their review status, explicit lossy/derived conversions, mp4_burn_sdr_v1 renders the complete human ASS with libass (real frames checked), mkv_soft_v1 copies streams and the track is extracted and compared; fonts checked, failures and cancellations publish nothing; synthetic media only (real footage/editors W09); export location = CO-CAND-007; GUI W08"
     },
     "W08": {
       "title": "GUI 整合和旧项目迁移",

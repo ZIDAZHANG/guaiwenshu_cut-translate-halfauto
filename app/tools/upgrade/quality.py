@@ -658,6 +658,16 @@ def _fonts(revision_id: str, check: dict) -> list[dict]:
     return issues
 
 
+def export_issues(revision_id: str, *, media_record: dict | None = None, target_media_id: str | None = None, font_check: dict | None = None) -> list[dict]:
+    """QC21 / QC22 issues of one export (plan 11.2: only exports know the target media and the fonts that must exist)."""
+    issues = []
+    if media_record is not None and target_media_id is not None:
+        issues += _media_binding(revision_id, media_record, target_media_id)
+    if font_check is not None:
+        issues += _fonts(revision_id, font_check)
+    return issues
+
+
 # --------------------------------------------------------------------------- interface
 
 class _Scope:

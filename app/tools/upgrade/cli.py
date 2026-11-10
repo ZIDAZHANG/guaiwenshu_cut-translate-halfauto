@@ -393,6 +393,61 @@ def cmd_review_frames(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+# --------------------------------------------------------------------------- exports (W07, plan 3.2 / 7.5 / 9.5 / 12.1)
+
+def _audio_choice(value: str | None, record: dict | None) -> int | None:
+    if record is None:
+        return None
+    if value is None:
+        return record["selected_audio_stream"]                 # the project's selected audio stream (12.1 default)
+    if value == "none":
+        return None
+    index = _parse_stream(value)
+    streams = {item["index"]: item for item in record["streams"]}
+    if index not in streams or streams[index]["codec_type"] != "audio":
+        raise ContractError("NEEDS_SELECTION", f"stream {index} is not an audio stream of this media", details={"audio_streams": sorted(
+            item["index"] for item in record["streams"] if item["codec_type"] == "audio")})
+    return index
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    from upgrade import export, media, revisions
+    from upgrade.contracts import SCHEMA_VERSION, load_record, new_id, utc_now
+    from upgrade.runner import project_dir
+    from upgrade.stages import resolve_roles
+    config = _data_root_config(args.data_root)
+    resolved = revisions.resolve_revision(config["data_root"], args.project, args.revision)
+    project = project_dir(config["data_root"], args.project)
+    report = load_record("QualityReport", project / resolved["directory"] / revisions.QUALITY_NAME)
+    media_id = args.media or resolved["media_id"]
+    record = media.load_media_record(project, media_id) if (args.kind != "subtitles" or args.include_media or args.media) else None
+    export_id = new_id()
+    runtime = None
+    if args.kind != "subtitles":
+        roles = resolve_roles(config, {"config_snapshot": {"engine_settings": _engine_settings_for(config)}, "resource_refs": []}, ["ffprobe", "ffmpeg"])
+        runtime = media.MediaRuntime(project_dir=project, ffprobe=roles["ffprobe"], ffmpeg=roles["ffmpeg"], log_dir=project / "logs" / f"export-{export_id}", owner_token="export")
+    counts = {severity: sum(1 for issue in report["issues"] if issue["severity"] == severity) for severity in ("ERROR", "WARNING", "INFO")}
+    request = {"schema_version": SCHEMA_VERSION, "export_id": export_id, "project_id": args.project, "revision_id": args.revision, "media_id": media_id, "kind": args.kind,
+               "selected_audio_stream": _audio_choice(args.audio_stream, record) if args.kind != "subtitles" else None,
+               "profile_id": export.profile_for(args.kind, args.profile), "destination_root": str(Path(args.destination).absolute()), "include_media": bool(args.include_media),
+               "quality_acknowledgement": {"structural_status": report["structural_status"], "issue_counts": counts,
+                                           "human_status": {fmt: item["human_status"] for fmt, item in resolved["confirmations"].items()},
+                                           "note": "soft warnings do not block an export; the manifest keeps the human status of every file"},
+               "created_at": utc_now()}
+    manifest = export.run_export({
+        "request": request, "data_root": config["data_root"], "project_dir": project, "revision": resolved, "quality_report": report, "media_record": record,
+        "runtime": runtime, "format": args.format, "convert_to": args.convert_to, "accept_omitted_drawings": bool(args.accept_omitted_drawings),
+        "font_dirs": [Path(item) for item in args.font_dir or []] + export.system_font_dirs(), "ascii_temp_root": config["ascii_temp_root"]})
+    files = manifest["quality_snapshot"]["files"]
+    warnings = list(resolved["notices"]) + [{"code": issue["rule_id"], "severity": issue["severity"], "message": issue["message"]} for issue in manifest["quality_snapshot"]["export_issues"]]
+    warnings += [{"code": "NOT_REVIEWED", "file": item["file"], "human_status": item["human_status"], "message": "这个文件还没有经过完整的人工确认"}
+                 for item in files if item.get("human_status") in ("UNREVIEWED", "PARTIAL")]
+    _emit(_result("export", ok=True, ids={"project_id": args.project, "export_id": export_id, "revision_id": args.revision, "media_id": media_id, "kind": args.kind,
+                                          "profile_id": request["profile_id"], "destination": request["destination_root"], "files": files,
+                                          "validation": manifest["validation"]}, artifact_refs=manifest["output_refs"], warnings=warnings))
+    return EXIT_OK
+
+
 # --------------------------------------------------------------------------- parser
 
 class _Parser(argparse.ArgumentParser):
@@ -525,6 +580,21 @@ def build_parser() -> argparse.ArgumentParser:
     review_frames.add_argument("--at-ms", default=None, help="逗号分隔的毫秒时间（规范时间轴，首个显示帧 = 0）")
     review_frames.add_argument("--destination", required=True, help="新目录；已存在则拒绝（不覆盖）")
     review_frames.set_defaults(func=cmd_review_frames)
+    export_parser = sub.add_parser("export", help="从一个明确的版本导出字幕文件或成片（MP4 硬字幕 / MKV 软字幕）；不启动任何模型，输出目录只创建一次")
+    export_parser.add_argument("--data-root", required=True)
+    export_parser.add_argument("--project", required=True)
+    export_parser.add_argument("--revision", required=True, help="具体的版本 ID；没有 latest")
+    export_parser.add_argument("--kind", required=True, choices=("subtitles", "mp4_burn", "mkv_soft"))
+    export_parser.add_argument("--destination", required=True, help="新目录；已存在则拒绝（不覆盖）")
+    export_parser.add_argument("--profile", default=None, help="缺省按 kind 取唯一的固定 profile")
+    export_parser.add_argument("--format", default=None, choices=("srt", "ass"), help="版本含两种格式（机器版）时选一个；成片缺省用 ASS")
+    export_parser.add_argument("--audio-stream", default=None, help="成片用的音轨序号或 none；缺省用项目已选音轨")
+    export_parser.add_argument("--media", default=None, help="目标媒体 ID；缺省为字幕绑定的媒体，不同则拒绝（QC21）")
+    export_parser.add_argument("--include-media", action="store_true", help="仅字幕导出：同时复制原视频")
+    export_parser.add_argument("--convert-to", default=None, choices=("srt", "ass"), help="仅在明确要转换时使用：ASS→SRT 会失去排版；SRT→ASS 用固定基础样式")
+    export_parser.add_argument("--accept-omitted-drawings", action="store_true", help="ASS→SRT 时确认省略绘图事件")
+    export_parser.add_argument("--font-dir", action="append", default=None, help="额外的字体目录（可重复）；此外只查系统字体目录")
+    export_parser.set_defaults(func=cmd_export)
     return parser
 
 
