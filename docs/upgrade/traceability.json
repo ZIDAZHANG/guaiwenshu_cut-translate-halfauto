@@ -425,9 +425,9 @@
         "T05",
         "T08"
       ],
-      "status": "PARTIAL",
+      "status": "COMPLETED",
       "completion_record": "docs/upgrade/completion-W08.md",
-      "note": "task-detail buttons of 3.2 with their conditions, status wording of 3.3, source revision branch, explicit exports and read-only legacy migration done; new-task dialog, queue operations, resource relocation and dictionary-warning UI not done (Q-W08-1, command line meanwhile); real editors T08 in W09"
+      "note": "part 1 (db4fd04): task-detail buttons of 3.2 with their conditions, status wording of 3.3, source revision branch, explicit exports, read-only legacy migration; part 2 (Q-W08-1 settled): new-task dialog of 3.1 (required source/name, four fixed modes, stream choice, no-audio hint, dictionary acceptance, supplied Japanese subtitles), queue list and the six operations of 3.2 (stop = INTERRUPTED + pause, skip = CANCELLED + continue, remove, resume, copy with the current configuration), open/relocate original media, resource relocation, close confirmation of 10.5; command additions = CO-CAND-008; real editors T08 in W09 (B05)"
     },
     "W09": {
       "title": "真引擎、编辑器和便携候选验收",

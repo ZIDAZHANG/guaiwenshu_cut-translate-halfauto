@@ -28,7 +28,7 @@ W00–W08 的代码与测试都在本执行机上完成，但 W09/W10 的验收�
 ## 已经可以交给负责人的东西
 
 - 分支 `upgrade/subtitle-workflow-v2` 上 W00–W08 的代码、测试与每包完成记录（`docs/upgrade/completion-W00.md` … `completion-W08.md`）。
-- 决定与变更候选：`docs/upgrade/decisions.md`（CO-CAND-001…007 需要负责人逐条确认）。
+- 决定与变更候选：`docs/upgrade/decisions.md`（CO-CAND-001…008 需要负责人逐条确认）。
 - 验证台账 `docs/upgrade/validation-ledger.json`：T01–T06 的通过项都标明了证据类型（夹具/合成素材），T07–T09 保持 NOT_RUN。
 
 ## 回滚

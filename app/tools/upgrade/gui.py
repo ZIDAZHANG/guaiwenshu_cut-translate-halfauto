@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""The v2 panel inside the existing tkinter window (plan 3.2 / 3.3; work package W08).
+"""The v2 panel inside the existing tkinter window (plan 3.1-3.3; work package W08).
 
 The panel is a front end of the v2 command line: every action runs ``python -m upgrade.cli …`` and shows its one
 JSON answer, so the window can never do something the commands refuse (no implicit ``latest``, no confirmation that
 the user did not tick, no overwrite). It reads project indexes only to list them. It never edits a subtitle, never
 waits for or watches an editor, never registers a file because an editor closed, and closing the window does not stop
 an editor it opened. Its own settings (data root, editor path) live in a separate small file; the old configuration is
-not rewritten.
+not rewritten. The queue list, the new-task dialog and the resources list are in ``gui_queue``.
 """
 
 from __future__ import annotations
@@ -14,20 +14,24 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import queue as queue_module
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Callable
+
+from upgrade.gui_queue import QueueTab, ask_close_dialog, format_elapsed
 
 TOOLS_DIR = Path(__file__).resolve().parents[1]
 STATUS_TEXT = {"UNREVIEWED": "未经人工检查", "PARTIAL": "部分确认", "REVIEWED": "已人工确认"}
 SCOPE_TEXT = {"text": "文字", "timing": "时间", "style": "样式"}
 KIND_TEXT = {"machine": "机器版本", "source": "日文源版本", "review": "人工中文版本"}
 ACTIONS = {
-    "open_dir": "打开输出目录", "open_report": "查看复核报告", "create_session": "创建校对副本", "open_editor": "用编辑器打开",
+    "open_dir": "打开输出目录", "open_media": "打开原视频", "open_report": "查看复核报告", "create_session": "创建校对副本", "open_editor": "用编辑器打开",
     "register_review": "登记校对稿", "revise_source": "修订日文原文", "translate_source": "据此生成新机器译文",
     "export_subtitles": "导出字幕", "export_video": "导出视频", "attest": "标记人工确认", "migrate": "导入旧任务",
 }
@@ -57,6 +61,7 @@ def action_states(row: dict | None, fmt: str | None, *, session: dict | None, so
     chosen = selected and fmt in (row.get("formats") or {})
     return {
         "open_dir": selected,
+        "open_media": selected and bool(row.get("media_id")),
         "open_report": selected and bool(row.get("report_html")),
         "create_session": chosen,
         "open_editor": session is not None and Path(session["edit_file"]).is_file(),
@@ -74,15 +79,25 @@ def cli_argv(*args: str) -> list[str]:
     return [sys.executable, "-X", "utf8", "-m", "upgrade.cli", *args]
 
 
-def run_cli(*args: str) -> tuple[int, dict]:
+def start_cli(*args: str) -> subprocess.Popen:
+    """One command as a child process of this window (no console window, no shell)."""
     env = os.environ.copy()
     env["PYTHONPATH"] = str(TOOLS_DIR) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    completed = subprocess.run(cli_argv(*args), capture_output=True, text=True, encoding="utf-8", env=env, cwd=str(TOOLS_DIR), creationflags=flags)
+    return subprocess.Popen(cli_argv(*args), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", env=env, cwd=str(TOOLS_DIR),
+                            creationflags=flags)
+
+
+def finish_cli(process: subprocess.Popen) -> tuple[int, dict]:
+    stdout, stderr = process.communicate()        # reads both pipes to the end, so a chatty command never blocks
     try:
-        return completed.returncode, json.loads(completed.stdout)
+        return process.returncode, json.loads(stdout)
     except ValueError:
-        return completed.returncode, {"ok": False, "error": {"code": "CLI_OUTPUT", "message": (completed.stderr or completed.stdout)[-800:]}}
+        return process.returncode, {"ok": False, "error": {"code": "CLI_OUTPUT", "message": (stderr or stdout or "没有输出（进程被中止）")[-800:]}}
+
+
+def run_cli(*args: str) -> tuple[int, dict]:
+    return finish_cli(start_cli(*args))
 
 
 def list_projects(data_root: Path) -> list[dict]:
@@ -126,8 +141,39 @@ class V2Panel(ttk.Frame):
         self.source_session: dict | None = None
         self.source_revision_id: str | None = None
         self.busy = False
+        self.busy_title: str | None = None
+        self.busy_since = 0.0
+        self.children_running: list[subprocess.Popen] = []
+        self._inbox: queue_module.Queue = queue_module.Queue()
         self._build()
         self.update_buttons()
+        self._timers: dict[str, str] = {"drain": self.after(150, self._drain)}
+
+    def destroy(self) -> None:
+        for timer in self._timers.values():
+            if timer:
+                try:
+                    self.after_cancel(timer)
+                except tk.TclError:
+                    pass
+        self._timers.clear()
+        super().destroy()
+
+    # ---- calls from worker threads run on the window's thread
+    def call_soon(self, callback: Callable[[], None]) -> None:
+        self._inbox.put(callback)
+
+    def _drain(self) -> None:
+        try:
+            while True:
+                try:
+                    callback = self._inbox.get_nowait()
+                except queue_module.Empty:
+                    break
+                callback()
+        finally:
+            if "drain" in self._timers:
+                self._timers["drain"] = self.after(150, self._drain)
 
     # ---- settings (own file; the old configuration is never written)
     def _load_settings(self) -> dict:
@@ -152,7 +198,13 @@ class V2Panel(ttk.Frame):
         ttk.Entry(top, textvariable=self.editor_var, width=60).grid(row=1, column=1, sticky="we", padx=4, pady=(4, 0))
         ttk.Button(top, text="浏览...", command=self._choose_editor).grid(row=1, column=2, pady=(4, 0))
         top.columnconfigure(1, weight=1)
-        middle = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
+        self.tabs = ttk.Notebook(self)
+        self.tabs.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        self.queue_tab = QueueTab(self.tabs, self)
+        self.project_tab = ttk.Frame(self.tabs, padding=4)
+        self.tabs.add(self.queue_tab, text="任务队列")
+        self.tabs.add(self.project_tab, text="项目与版本")
+        middle = ttk.Panedwindow(self.project_tab, orient=tk.HORIZONTAL)
         middle.pack(fill=tk.BOTH, expand=True, pady=6)
         self.projects = ttk.Treeview(middle, columns=("name", "machine", "human"), show="headings", height=8, selectmode="browse")
         for column, text, width in (("name", "项目", 180), ("machine", "机器版本", 70), ("human", "人工版本", 70)):
@@ -167,13 +219,13 @@ class V2Panel(ttk.Frame):
             self.revisions.column(column, width=width, stretch=column == "status")
         self.revisions.bind("<<TreeviewSelect>>", lambda _event: self._revision_selected())
         middle.add(self.revisions, weight=3)
-        choose = ttk.Frame(self)
+        choose = ttk.Frame(self.project_tab)
         choose.pack(fill=tk.X)
         ttk.Label(choose, text="格式").pack(side=tk.LEFT)
         self.format_box = ttk.Combobox(choose, textvariable=self.format_var, state="readonly", width=6, values=())
         self.format_box.pack(side=tk.LEFT, padx=4)
         self.format_box.bind("<<ComboboxSelected>>", lambda _event: self.update_buttons())
-        buttons = ttk.Frame(self)
+        buttons = ttk.Frame(self.project_tab)
         buttons.pack(fill=tk.X, pady=(6, 0))
         self.buttons: dict[str, ttk.Button] = {}
         for position, (key, text) in enumerate(ACTIONS.items()):
@@ -188,6 +240,10 @@ class V2Panel(ttk.Frame):
     def data_root(self) -> Path | None:
         value = self.data_root_var.get().strip()
         return Path(value) if value and (Path(value) / "projects").is_dir() else None
+
+    def config_path(self) -> Path | None:
+        root = self.data_root()
+        return root / "settings" / "app.json" if root is not None and (root / "settings" / "app.json").is_file() else None
 
     def selected_row(self) -> dict | None:
         selection = self.revisions.selection()
@@ -210,12 +266,16 @@ class V2Panel(ttk.Frame):
         self.save_settings()
         self.projects.delete(*self.projects.get_children())
         root = self.data_root()
+        self.queue_tab.refresh()
         if root is None:
             self.status_var.set("这个目录不是 v2 数据根（里面没有 projects 文件夹）。")
             self.update_buttons()
             return
-        for row in list_projects(root):
+        projects = list_projects(root)
+        for row in projects:
             self.projects.insert("", tk.END, iid=row["project_id"], values=((row["display_name"] or "") + ("（旧任务导入）" if row["legacy"] else ""), row["machine"], row["human"]))
+        if self.busy_title is None:
+            self.status_var.set(f"数据根已就绪：{len(projects)} 个项目。新任务和队列在“任务队列”，校对和导出在“项目与版本”。")
         if self.project_id and self.projects.exists(self.project_id):
             self.projects.selection_set(self.project_id)
             self._project_selected()
@@ -258,18 +318,57 @@ class V2Panel(ttk.Frame):
     # ---- running commands
     def run(self, title: str, args: list[str], done: Callable[[dict], None] | None = None, *, background: bool = False) -> None:
         def finish(code: int, result: dict) -> None:
-            self.busy = False
-            self.write(result_text(title, code, result))
+            self.busy, self.busy_title = False, None
+            self.write(result_text(title, code, result) + (f"（用时 {format_elapsed(time.monotonic() - started)}）" if background else ""))
             if result.get("ok") and done is not None:
                 done(result)
             self.refresh()
         if not background:
             finish(*self.runner(*args))
             return
-        self.busy = True
+        started = time.monotonic()
+        self.busy, self.busy_title, self.busy_since = True, title, started
         self.update_buttons()
         self.write(f"… {title}（在后台运行，可以继续查看其他版本）")
-        threading.Thread(target=lambda: (lambda outcome: self.after(0, lambda: finish(*outcome)))(self.runner(*args)), daemon=True).start()
+        self._tick()
+        if self.runner is run_cli:
+            process = start_cli(*args)
+            self.children_running.append(process)
+
+            def work() -> None:
+                outcome = finish_cli(process)
+                self.call_soon(lambda: (self.children_running.remove(process) if process in self.children_running else None, finish(*outcome)))
+        else:
+            def work() -> None:
+                outcome = self.runner(*args)
+                self.call_soon(lambda: finish(*outcome))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _tick(self) -> None:
+        """Background work shows how long it has been running; there is no invented percentage (plan 3.2)."""
+        if self.busy_title is None:
+            return
+        self.status_var.set(f"{self.busy_title} 在后台运行，已耗时 {format_elapsed(time.monotonic() - self.busy_since)}。")
+        if "drain" in self._timers:
+            self._timers["tick"] = self.after(1000, self._tick)
+
+    def confirm_close(self) -> bool:
+        """Called by the old window before it closes: running work is stopped first, or the user goes back (plan 10.5)."""
+        alive = [process for process in self.children_running if process.poll() is None]
+        busy = (["队列正在运行"] if self.queue_tab.own_executor_running() else []) + ([f"{self.busy_title or '后台操作'}正在进行"] if alive else [])
+        if not busy:
+            return True
+        if not ask_close_dialog(self, "、".join(busy)):
+            return False
+        self.queue_tab.stop_for_exit()
+        for process in alive:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+        return True
 
     def where(self) -> list[str]:
         return ["--data-root", str(self.data_root()), "--project", str(self.project_id)]
@@ -296,6 +395,32 @@ class V2Panel(ttk.Frame):
     # ---- the buttons of plan 3.2
     def do_open_dir(self) -> None:
         self.open_path(self.project_path(self.selected_row()["directory"]))
+
+    def ask_relocate(self, reason: str) -> str | None:
+        if not messagebox.askyesno("重新定位媒体", f"{reason}。\n要指向它现在的位置吗？只接受内容和登记时完全相同的文件。"):
+            return None
+        return filedialog.askopenfilename(title="选择原视频现在的位置", filetypes=[("视频", "*.mp4 *.mkv *.mov *.webm *.avi *.flv *.ts"), ("全部", "*.*")]) or None
+
+    def do_open_media(self) -> None:
+        """Plan 3.2: open the original when it can still be found with the same content; otherwise relocate it."""
+        row = self.selected_row()
+        code, result = self.runner("media", "locate", *self.where(), "--media", row["media_id"])
+        if result.get("ok"):
+            self.open_path(Path(result["ids"]["path"]))
+            return
+        error = result.get("error") or {}
+        if error.get("code") not in ("INPUT_MISSING", "MEDIA_CHANGED"):
+            self.write(result_text("打开原视频", code, result))
+            return
+        reason = "找不到原视频（可能被移动或改了名字）" if error["code"] == "INPUT_MISSING" else "原来位置上的文件和登记的视频内容不一样"
+        chosen = self.ask_relocate(reason)
+        if not chosen:
+            self.write(f"✘ 打开原视频 未完成：{reason}。")
+            return
+        code, moved = self.runner("media", "relocate", *self.where(), "--media", row["media_id"], "--path", chosen)
+        self.write(result_text("重新定位媒体", code, moved))
+        if moved.get("ok"):
+            self.open_path(Path(moved["ids"]["path"]))
 
     def do_open_report(self) -> None:
         self.open_path(self.project_path(self.selected_row()["report_html"]))
@@ -360,7 +485,8 @@ class V2Panel(ttk.Frame):
 
         def submitted(result: dict) -> None:
             self.source_revision_id = None
-            self.run("运行翻译队列", ["queue", "run", "--data-root", str(self.data_root())], background=True)
+            self.tabs.select(self.queue_tab)
+            self.queue_tab.start_queue()
         self.run("提交译文任务", ["submit", "--config", str(config), "--mode", "supplied_source", "--project", str(self.project_id), "--source-revision", source_id], submitted)
 
     def do_export_subtitles(self) -> None:

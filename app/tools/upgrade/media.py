@@ -470,6 +470,29 @@ def verify_source(record: dict, project_dir: Path) -> dict:
     return refreshed
 
 
+def relocate_media(project_dir: Path, media_id: str, new_path: Path | str) -> dict:
+    """"重新定位媒体" (plan 3.2): bind a registered media to the file at its new location. Only the same content is
+    accepted (full SHA-256); a different file is MEDIA_CHANGED and must be registered as new media. Nothing else changes."""
+    record = load_media_record(project_dir, media_id)
+    if record["extensions"].get("copied_original"):
+        raise ContractError("NEEDS_SELECTION", "this media was copied into the project; it does not need relocating", details={"media_id": media_id})
+    path = Path(new_path)
+    check_path_components(path)
+    if not path.is_absolute() or not path.is_file():
+        raise ContractError("INPUT_MISSING", f"media file not found: {path}", details={"path": str(path)})
+    before = path.stat()
+    digest = sha256_file(path)
+    after = path.stat()
+    if (after.st_size, after.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
+        raise ContractError("MEDIA_CHANGED", "the file changed while it was being read; retry when it is stable", retryable=True, details={"path": str(path)})
+    if digest != record["source_sha256"]:
+        raise ContractError("MEDIA_CHANGED", "this file is not the registered media (different content); register it as new media instead",
+                            details={"media_id": media_id, "path": str(path), "expected": record["source_sha256"], "observed": digest})
+    ref = require_record("ExternalFileRef", {"absolute_path": str(path), "sha256": digest, "bytes": after.st_size, "mtime_ns": after.st_mtime_ns})
+    _save_binding(project_dir, media_id, ref, "relocated by the user; content verified by full hash")
+    return ref
+
+
 # --------------------------------------------------------------------------- probe_media
 
 def _clock_problem(code: str, kind: str, details: dict) -> dict:
@@ -1052,7 +1075,7 @@ __all__ = [
     "MAPPING_VERSION", "COMPAT_PROFILE_ID", "ASR_SAMPLE_RATE", "MediaRuntime", "round_half_up", "parse_rational", "parse_seconds", "pts_to_ms",
     "ms_text", "resource_executable", "run_tool", "probe_format_streams", "probe_packets", "probe_first_audio_frame", "normalize_streams",
     "select_streams", "stream_by_index", "analyze_video_packets", "media_end_seconds", "unsupported_profile_reasons", "media_dir",
-    "load_media_record", "verify_source", "build_media_record", "probe_media", "is_direct_usable", "compare_frame_maps", "prepare_media",
+    "load_media_record", "verify_source", "relocate_media", "build_media_record", "probe_media", "is_direct_usable", "compare_frame_maps", "prepare_media",
     "worker_command", "download_argv", "download_media",
 ]
 

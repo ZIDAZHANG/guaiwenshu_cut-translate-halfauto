@@ -2,7 +2,7 @@
   "schema_version": 2,
   "record_kind": "validation_ledger",
   "plan_section": "14.5",
-  "updated_at": "2026-11-10T13:58:19Z",
+  "updated_at": "2026-11-11T03:36:08Z",
   "entries": [
     {
       "test_id": "LEGACY-22-NOYAML",
@@ -320,7 +320,57 @@
       ],
       "observed": "migration: every old file keeps its hash and mtime before/after and after a later registration; small files byte-copied, video only referenced and registered as media; old DONE gives no v2 revision; a hand-edited old file registered explicitly is unmapped/PARTIAL; a non-task directory creates no project. panel on a real data root: two formats need an explicit choice, the editor gets only the working copy, registered = PARTIAL with empty scopes, REVIEWED only after text+timing, export names the chosen revision, a corrected source is not translated until the explicit second step",
       "expected": "plan 9.6 migration rules; 3.2/3.3 button conditions and wording; W08 acceptance list",
-      "remaining_limitations": "real Subtitle Edit / Aegisub round trips are T08 (W09, B05); new-task dialog and queue operations not in the panel yet (Q-W08-1)"
+      "remaining_limitations": "real Subtitle Edit / Aegisub round trips are T08 (W09, B05)"
+    },
+    {
+      "test_id": "T02-W08",
+      "requirement_ids": [
+        "FR06",
+        "FR09",
+        "FR15"
+      ],
+      "build_sha": "W08 part 2 working tree on top of db4fd04 (see completion-W08.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-11T03:36:08Z",
+      "status": "PASS",
+      "input_hashes": {
+        "queue": "synthetic stages (tests/upgrade_runner_test.py FakeStage) with an owned blocking child process"
+      },
+      "evidence_paths": [
+        "tests/upgrade_queue_gui_test.py",
+        "LOCAL_WORKSPACE/roast-w08b-tests-summary.json"
+      ],
+      "observed": "stop current: the running request is stopped through its owned process, recorded INTERRUPTED (PROCESS_CANCELLED, kind queue_stop, stage ASR), the next request stays QUEUED (paused), the stop flag is consumed; resume adds an ASR attempt in the same run and does not re-run INPUT; skip current: CANCELLED and the next request completes; queue stop without an executor writes nothing; a left-over flag does not block the next start; queue_rows while running: executor live, active stage, elapsed seconds, progress null",
+      "expected": "plan 3.2 queue operations, 10.2 state machine (resume adds attempts, history kept), 10.5 owned-process stop",
+      "remaining_limitations": "the window does not put its executor child in a job object: a crashed window leaves the executor running until the queue ends"
+    },
+    {
+      "test_id": "T08-W08",
+      "requirement_ids": [
+        "FR01",
+        "FR05",
+        "FR09",
+        "FR16"
+      ],
+      "build_sha": "W08 part 2 working tree on top of db4fd04 (see completion-W08.md for the commit)",
+      "config_sha": null,
+      "resource_manifest_sha": "1960537ff79fce047e5f1c1b41458c253baa51f19426d3ebba6860f0ae82e6c2",
+      "evidence_kind": "fixture",
+      "executed_at": "2026-11-11T03:36:08Z",
+      "status": "PASS",
+      "input_hashes": {
+        "media": "synthetic S05 clips and a two-audio MKV made by tests/support/w03.py with the real FFmpeg",
+        "dictionary": "a user pre dictionary with one malformed line"
+      },
+      "evidence_paths": [
+        "tests/upgrade_queue_gui_test.py",
+        "LOCAL_WORKSPACE/roast-w08b-tests-summary.json"
+      ],
+      "observed": "panel on a real data root through the real command line: a new task with two audio tracks asks for the track (no 'none' for combined) and lists the unsupported dictionary entry before anything is queued, the answer is recorded in the request and the acceptance is not asked again; a silent file with a speech mode is refused with a hint and nothing queued; a supplied Japanese subtitle registers media and source revision first; 'start queue' runs queue run as a child of the window, the list and buttons follow FAILED -> resume -> QUEUED, copy and remove; open original video relocates a moved file and refuses different content; closing offers only 'stop and exit' or 'back'. Screenshots of the queue tab and both new-task dialog modes checked on the execution machine. Full suite 39/39 (22 legacy + 17 upgrade files)",
+      "expected": "plan 3.1 / 3.2 window behaviour and 10.5 closing; W08 acceptance list",
+      "remaining_limitations": "real Subtitle Edit / Aegisub round trips and the manual acceptance of T08 need the editors (B05, W09)"
     },
     {
       "test_id": "T03",
@@ -451,7 +501,7 @@
       "evidence_paths": [],
       "observed": "",
       "expected": "",
-      "remaining_limitations": "执行机未装 Subtitle Edit/Aegisub（B05）"
+      "remaining_limitations": "window part PASS (T08-W08); real Subtitle Edit / Aegisub round trips and manual acceptance need the editors (B05)"
     },
     {
       "test_id": "T09",

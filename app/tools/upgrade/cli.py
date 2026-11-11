@@ -113,6 +113,24 @@ def cmd_resources_register(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_resources_list(args: argparse.Namespace) -> int:
+    """Declared resources with their state (no version probes): the window's "资源与工具" list."""
+    from upgrade.resource_catalog import inspect_resources, load_declarations, resources_file_path
+    config = _load_config(args.config)
+    declarations = load_declarations(resources_file_path(config))
+    report = inspect_resources(config, declarations=declarations, probe=False)
+    problems = {(problem.get("details") or {}).get("resource_id"): problem for problem in report["problems"]}
+    rows = []
+    for resource_id, declaration in sorted(declarations.items()):
+        problem = problems.get(resource_id)
+        manifest = report["manifests"].get(resource_id)
+        state = problem["code"] if problem else ("ok" if manifest and manifest["extensions"].get("identity") == "verified" else "first_inspection")
+        rows.append({"resource_id": resource_id, "kind": declaration["kind"], "absolute_path": declaration["absolute_path"],
+                     "directory": bool(declaration["files"]), "state": state, "message": problem["message"] if problem else None})
+    _emit(_result("resources.list", ok=True, ids={"resources_file": report["resources_file"], "resources": rows}))
+    return EXIT_OK
+
+
 def cmd_resources_rebind(args: argparse.Namespace) -> int:
     from upgrade.resource_catalog import rebind_resource
     config = _load_config(args.config)
@@ -158,51 +176,62 @@ def _dictionary_for_request(config: dict, engine: dict, *, accept: bool) -> tupl
     return prepared, warnings
 
 
-def cmd_submit(args: argparse.Namespace) -> int:
+def _submit_job(config: dict, *, mode: str, timing_mode: str | None, video_arg: str | None, url: str | None, project: str | None,
+                source_revision: str | None, video_stream_arg: str | None, audio_stream_arg: str | None, copy_original: bool, accept: bool,
+                display_name: str | None) -> tuple[dict, dict, dict, list]:
+    """Build and persist one request with the configuration as it is now (``submit`` and ``queue copy``)."""
     from upgrade.runner import build_job_request, project_dir, submit
-    config = _load_config(args.config)
     engine = _engine_settings_for(config)
     source_media_id = None
-    if args.mode == "supplied_source":
-        if not (args.project and args.source_revision):
+    if mode == "supplied_source":
+        if not (project and source_revision):
             raise ContractError("NEEDS_SELECTION", "supplied_source needs --project ID and --source-revision ID")
-    elif args.source_revision:
+    elif source_revision:
         raise ContractError("NEEDS_SELECTION", "--source-revision is only valid with --mode supplied_source")
-    if args.timing_mode and args.mode != "combined":
+    if timing_mode and mode != "combined":
         raise ContractError("NEEDS_SELECTION", "--timing-mode only applies to --mode combined (speech_only=speech, visual_only=screen are fixed)")
-    video_stream, audio_stream = _parse_stream(args.video_stream), _parse_stream(args.audio_stream)
-    prepared, warnings = _dictionary_for_request(config, engine, accept=args.accept_dictionary_warnings)
-    if args.video:
-        video = Path(args.video)
+    video_stream, audio_stream = _parse_stream(video_stream_arg), _parse_stream(audio_stream_arg)
+    prepared, warnings = _dictionary_for_request(config, engine, accept=accept)
+    if video_arg:
+        video = Path(video_arg)
         if not video.is_file():
             raise ContractError("INPUT_MISSING", f"video file not found: {video}", details={"path": str(video)})
         input_kind, input_value, default_name = "local_video", str(video.resolve()), video.stem
         from upgrade.stages import preflight_streams
-        checked = preflight_streams(config, {"config_snapshot": {"engine_settings": engine}, "resource_refs": []}, video.resolve(), mode=args.mode,
-                                    video_stream=video_stream, audio_stream=audio_stream, audio_none=args.audio_stream == "none")
+        checked = preflight_streams(config, {"config_snapshot": {"engine_settings": engine}, "resource_refs": []}, video.resolve(), mode=mode,
+                                    video_stream=video_stream, audio_stream=audio_stream, audio_none=audio_stream_arg == "none")
         video_stream, audio_stream = checked["video_stream"], checked["audio_stream"]
         if checked["warning"]:
             warnings.append(checked["warning"])
-    elif args.url:
-        input_kind, input_value, default_name = "url", args.url, args.url
+    elif url:
+        input_kind, input_value, default_name = "url", url, url
     else:
-        if args.mode != "supplied_source":
+        if mode != "supplied_source":
             raise ContractError("NEEDS_SELECTION", "give --video FILE or --url URL")
         from upgrade.source import load_source_revision
-        loaded = load_source_revision(project_dir(config["data_root"], args.project), args.source_revision)
+        loaded = load_source_revision(project_dir(config["data_root"], project), source_revision)
         source_media_id = loaded["record"]["media_id"]             # the media the source revision is bound to (plan 10.1: SOURCE reads the revision)
-        input_kind, input_value, default_name = "local_video", f"supplied-source:{args.source_revision}", args.project
+        input_kind, input_value, default_name = "local_video", f"supplied-source:{source_revision}", project
     request = build_job_request(
-        config, engine, input_kind=input_kind, input_value=input_value, recognition_mode=args.mode, timing_mode=args.timing_mode,
-        project_id=args.project, video_stream_index=video_stream, audio_stream_index=audio_stream,
-        source_revision_id=args.source_revision, source_media_id=source_media_id, dictionary_revision_id=prepared["revision_id"],
+        config, engine, input_kind=input_kind, input_value=input_value, recognition_mode=mode, timing_mode=timing_mode,
+        project_id=project, video_stream_index=video_stream, audio_stream_index=audio_stream,
+        source_revision_id=source_revision, source_media_id=source_media_id, dictionary_revision_id=prepared["revision_id"],
         resource_refs=_resource_refs_for(config), accepted_dictionary_warnings=prepared["accepted_ids"],
     )
-    if args.audio_stream == "none":
+    if audio_stream_arg == "none":
         request["extensions"]["audio_stream"] = "none"
-    if args.copy_original:
+    if copy_original:
         request["extensions"]["copy_original"] = True
-    envelope = submit(config["data_root"], request, display_name=args.display_name or default_name)
+    envelope = submit(config["data_root"], request, display_name=display_name or default_name)
+    return request, envelope, prepared, warnings
+
+
+def cmd_submit(args: argparse.Namespace) -> int:
+    config = _load_config(args.config)
+    request, envelope, prepared, warnings = _submit_job(
+        config, mode=args.mode, timing_mode=args.timing_mode, video_arg=args.video, url=args.url, project=args.project, source_revision=args.source_revision,
+        video_stream_arg=args.video_stream, audio_stream_arg=args.audio_stream, copy_original=args.copy_original,
+        accept=args.accept_dictionary_warnings, display_name=args.display_name)
     _emit(_result("submit", ok=True, ids={"project_id": request["project_id"], "request_id": request["request_id"], "status": envelope["status"],
                                            "dictionary_revision_id": prepared["revision_id"],
                                            "duplicate": envelope["request"]["request_id"] == request["request_id"] and envelope["created_at"] != request["created_at"]},
@@ -225,6 +254,50 @@ def cmd_queue_cancel(args: argparse.Namespace) -> int:
     config = _data_root_config(args.data_root)
     envelope = cancel(config["data_root"], args.request)
     _emit(_result("queue.cancel", ok=True, ids={"request_id": args.request, "status": envelope["status"]}))
+    return EXIT_OK
+
+
+def cmd_queue_stop(args: argparse.Namespace) -> int:
+    """"停止当前" (plan 3.2): the running request is stopped (resumable) and the queue pauses; nothing else is touched."""
+    from upgrade.runner import request_stop
+    config = _data_root_config(args.data_root)
+    outcome = request_stop(config["data_root"])
+    warnings = [] if outcome["requested"] else [{"code": "EXECUTOR_NOT_RUNNING", "message": "队列没有在运行，没有可停止的任务"}]
+    _emit(_result("queue.stop", ok=True, ids=outcome, warnings=warnings))
+    return EXIT_OK
+
+
+def cmd_queue_list(args: argparse.Namespace) -> int:
+    from upgrade.runner import queue_rows
+    config = _data_root_config(args.data_root)
+    _emit(_result("queue.list", ok=True, ids=queue_rows(config["data_root"])))
+    return EXIT_OK
+
+
+def cmd_queue_copy(args: argparse.Namespace) -> int:
+    """"复制为新任务" (plan 3.1): same input, mode and streams, but the configuration, dictionary and resources as they are now."""
+    from upgrade.runner import load_envelope, load_project
+    config = _data_root_config(args.data_root)
+    old = load_envelope(config["data_root"], args.request)["request"]
+    extensions = old.get("extensions") or {}
+    mode, job_input = old["recognition_mode"], old["input"]
+    video = url = None
+    if mode != "supplied_source":
+        if job_input["kind"] == "url":
+            url = job_input["value"]
+        else:
+            video = job_input["value"]
+    audio = "none" if extensions.get("audio_stream") == "none" else (None if old["audio_stream_index"] is None else str(old["audio_stream_index"]))
+    video_stream = None if old["video_stream_index"] is None else str(old["video_stream_index"])
+    display = args.display_name or load_project(config["data_root"], old["project_id"]).get("display_name")
+    request, envelope, prepared, warnings = _submit_job(
+        config, mode=mode, timing_mode=old["timing_mode"] if mode == "combined" else None, video_arg=video, url=url, project=old["project_id"],
+        source_revision=old["source_revision_id"], video_stream_arg=video_stream, audio_stream_arg=audio, copy_original=bool(extensions.get("copy_original")),
+        accept=args.accept_dictionary_warnings, display_name=display)
+    previous, current = old["config_snapshot"]["config_sha256"], request["config_snapshot"]["config_sha256"]
+    _emit(_result("queue.copy", ok=True, ids={"copied_from": args.request, "project_id": request["project_id"], "request_id": request["request_id"],
+                                               "status": envelope["status"], "config_changed": previous != current,
+                                               "dictionary_revision_id": prepared["revision_id"]}, warnings=warnings))
     return EXIT_OK
 
 
@@ -260,6 +333,63 @@ def cmd_inbox_intake(args: argparse.Namespace) -> int:
     _emit(_result("inbox.intake", ok=not failed, ids={"rows": rows},
                   error=ContractError("SCHEMA_INVALID", f"{len(failed)} inbox file(s) could not be ingested", details={"failed": failed}) if failed else None))
     return EXIT_OK if not failed else EXIT_DATA
+
+
+# --------------------------------------------------------------------------- media (W08: new task with a supplied source, open / relocate the original)
+
+def cmd_media_register(args: argparse.Namespace) -> int:
+    """Register a local video as media of a (new) project, for "已有日文源字幕" tasks. Streams are settled before anything is created."""
+    from upgrade import media
+    from upgrade.contracts import new_id
+    from upgrade.runner import create_project, project_dir, update_project
+    from upgrade.stages import preflight_streams, resolve_roles
+    config = _data_root_config(args.data_root)
+    if bool(args.project) == bool(args.display_name):
+        raise ContractError("NEEDS_SELECTION", "give --project ID (existing project) or --display-name NAME (new project)")
+    video = Path(args.video)
+    if not video.is_file():
+        raise ContractError("INPUT_MISSING", f"video file not found: {video}", details={"path": str(video)})
+    request_like = {"config_snapshot": {"engine_settings": _engine_settings_for(config)}, "resource_refs": []}
+    roles = resolve_roles(config, request_like, ["ffprobe"])
+    video_stream, audio_stream = _parse_stream(args.video_stream), _parse_stream(args.audio_stream)
+    checked = preflight_streams(config, request_like, video.resolve(), mode="supplied_source", video_stream=video_stream, audio_stream=audio_stream,
+                                audio_none=args.audio_stream == "none")
+    project_id = args.project or create_project(config["data_root"], args.display_name)["project_id"]
+    project = project_dir(config["data_root"], project_id)
+    if not (project / "project.json").is_file():
+        raise ContractError("INPUT_MISSING", f"project {project_id} does not exist", details={"project_id": project_id})
+    runtime = media.MediaRuntime(project_dir=project, ffprobe=roles["ffprobe"], log_dir=project / "logs" / f"media-register-{new_id()}", owner_token="media-register")
+    extensions = {"audio_stream": "none"} if args.audio_stream == "none" else {}
+    if args.copy_original:
+        extensions["copy_original"] = True
+    record = media.probe_media({"input": {"kind": "local_video", "value": str(video.resolve()), "source_media_id": None},
+                                "selected_video_stream": checked["video_stream"], "selected_audio_stream": checked["audio_stream"],
+                                "project_id": project_id, "extensions": extensions}, runtime=runtime)
+    update_project(config["data_root"], project_id, lambda item: item["media_ids"].append(record["media_id"]) if record["media_id"] not in item["media_ids"] else None)
+    _emit(_result("media.register", ok=True, ids={"project_id": project_id, "media_id": record["media_id"], "video_stream": record["selected_video_stream"],
+                                                   "audio_stream": record["selected_audio_stream"], "clock_verified": record["clock"]["verified"],
+                                                   "duration_ms": record["duration_ms"]}))
+    return EXIT_OK
+
+
+def cmd_media_locate(args: argparse.Namespace) -> int:
+    """"打开原视频": the bound original if it is still there with the same content; otherwise INPUT_MISSING / MEDIA_CHANGED."""
+    from upgrade import media
+    from upgrade.runner import project_dir
+    config = _data_root_config(args.data_root)
+    project = project_dir(config["data_root"], args.project)
+    ref = media.verify_source(media.load_media_record(project, args.media), project)
+    _emit(_result("media.locate", ok=True, ids={"media_id": args.media, "path": ref["absolute_path"], "sha256": ref["sha256"]}))
+    return EXIT_OK
+
+
+def cmd_media_relocate(args: argparse.Namespace) -> int:
+    from upgrade import media
+    from upgrade.runner import project_dir
+    config = _data_root_config(args.data_root)
+    ref = media.relocate_media(project_dir(config["data_root"], args.project), args.media, Path(args.path).resolve())
+    _emit(_result("media.relocate", ok=True, ids={"media_id": args.media, "path": ref["absolute_path"], "sha256": ref["sha256"], "rebound": True}))
+    return EXIT_OK
 
 
 # --------------------------------------------------------------------------- human revisions (W05, plan 9 / 12.1)
@@ -557,6 +687,10 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("--license-status", default="unresolved", choices=LICENSE_STATUSES)
     register.add_argument("--version-arg", action="append", default=None, help="版本/帮助探针参数，可重复；不传用按类型默认")
     register.set_defaults(func=cmd_resources_register)
+    listing = resources_sub.add_parser("list", help="列出已登记资源及其状态（不运行版本探针）")
+    listing.add_argument("--config", required=True)
+    listing.set_defaults(func=cmd_resources_list)
+
     rebind = resources_sub.add_parser("rebind", help="资源移动后只更新本机路径；内容身份必须一致")
     rebind.add_argument("--config", required=True)
     rebind.add_argument("--id", required=True)
@@ -586,6 +720,21 @@ def build_parser() -> argparse.ArgumentParser:
     queue_run.add_argument("--continue-on-error", dest="continue_on_error", action="store_true", default=None)
     queue_run.add_argument("--stop-on-error", dest="continue_on_error", action="store_false")
     queue_run.set_defaults(func=cmd_queue_run)
+    queue_stop = queue_sub.add_parser("stop", help="停止当前：终止正在运行请求的自有进程（可恢复）并暂停队列")
+    queue_stop.add_argument("--data-root", required=True)
+    queue_stop.set_defaults(func=cmd_queue_stop)
+
+    queue_list = queue_sub.add_parser("list", help="列出全部请求（含历史）：名称、输入、模式、状态、当前阶段与已耗时、版本与质量（只读）")
+    queue_list.add_argument("--data-root", required=True)
+    queue_list.set_defaults(func=cmd_queue_list)
+
+    queue_copy = queue_sub.add_parser("copy", help="复制为新任务：相同输入/模式/选流，采用当前配置、词典与资源")
+    queue_copy.add_argument("--data-root", required=True)
+    queue_copy.add_argument("--request", required=True)
+    queue_copy.add_argument("--display-name", default=None)
+    queue_copy.add_argument("--accept-dictionary-warnings", action="store_true")
+    queue_copy.set_defaults(func=cmd_queue_copy)
+
     queue_cancel = queue_sub.add_parser("cancel", help="取消未开始请求，或请求执行器停止正在运行的请求")
     queue_cancel.add_argument("--data-root", required=True)
     queue_cancel.add_argument("--request", required=True)
@@ -602,6 +751,29 @@ def build_parser() -> argparse.ArgumentParser:
     inbox_intake.add_argument("--config", required=True)
     inbox_intake.add_argument("--inbox", required=True)
     inbox_intake.set_defaults(func=cmd_inbox_intake)
+
+    media_parser = sub.add_parser("media", help="媒体登记、定位与重新定位")
+    media_sub = media_parser.add_subparsers(dest="command", required=True)
+    media_register = media_sub.add_parser("register", help="把本地视频登记为项目媒体（“已有日文源字幕”任务用）；选流有歧义时先拒绝，不建项目")
+    media_register.add_argument("--data-root", required=True)
+    media_register.add_argument("--video", required=True)
+    media_register.add_argument("--project", default=None, help="已有项目 ID")
+    media_register.add_argument("--display-name", default=None, help="新项目的显示名")
+    media_register.add_argument("--video-stream", default=None)
+    media_register.add_argument("--audio-stream", default=None, help="音频流序号或 none")
+    media_register.add_argument("--copy-original", action="store_true")
+    media_register.set_defaults(func=cmd_media_register)
+    media_locate = media_sub.add_parser("locate", help="原视频仍在原处且内容一致时给出路径；否则 INPUT_MISSING / MEDIA_CHANGED")
+    media_locate.add_argument("--data-root", required=True)
+    media_locate.add_argument("--project", required=True)
+    media_locate.add_argument("--media", required=True)
+    media_locate.set_defaults(func=cmd_media_locate)
+    media_relocate = media_sub.add_parser("relocate", help="原视频移动后指向新位置；只接受完整哈希相同的文件")
+    media_relocate.add_argument("--data-root", required=True)
+    media_relocate.add_argument("--project", required=True)
+    media_relocate.add_argument("--media", required=True)
+    media_relocate.add_argument("--path", required=True)
+    media_relocate.set_defaults(func=cmd_media_relocate)
 
     review_parser = sub.add_parser("review", help="人工校对：创建校对副本、登记校对稿、标记人工确认")
     review_sub = review_parser.add_subparsers(dest="command", required=True)

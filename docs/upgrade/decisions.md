@@ -188,8 +188,18 @@ D01–D20、FR01–FR16、QC01–QC23、W00–W10、T01–T09、B01–B11 全部
 | IF-64 | 编辑器以分离进程启动，参数只有校对副本路径；不等待、不监视、不保存进程句柄；未配置时让用户选，取消则打开副本所在文件夹 | 3.2"用编辑器打开"、D03 |
 | IF-65 | `revisions list`（只读）供窗口列出版本；`migrate --data-root DIR --legacy-job DIR [--display-name] [--no-media]`（计划 12.1 写作 `--config FILE`；为与其他 v2 命令一致使用 `--data-root`） | 12.1 |
 | IF-66 | 迁移：小文本文件（json/jsonl/srt/ass/ssa/csv/txt/log，≤ 20 MiB）逐字节复制到 `legacy/files/`，其余文件只记哈希；原视频登记为媒体（失败只记提示，不影响迁移）；旧字幕只列为 `UNREVIEWED_LEGACY_SNAPSHOT` | 9.6 |
-| Q-W08-1 | 面板尚未提供“新任务”对话框与队列操作（开始/停止/跳过/恢复/复制为新任务）、资源重新定位与词典警告确认的界面；这些目前用命令行完成。W08 因此登记为 PARTIAL | 3.1、3.2、W08 任务 |
+| Q-W08-1 | ~~面板尚未提供“新任务”对话框与队列操作、资源重新定位与词典警告确认的界面~~ **已结算（W08 第二部分，同日）**：见 IF-67…IF-74；W08 改为 COMPLETED（真实编辑器往返仍属 T08/W09） | 3.1、3.2、W08 任务 |
 | EV-08 | 证据：`tests/upgrade_gui_migrate_test.py`（7 个用例：按钮规则、状态措辞、旧窗口静态核对、真实数据根上驱动面板、迁移与旧目录不变）；全套汇总 `LOCAL_WORKSPACE/roast-w08-tests-summary.json` | 14.3 T05/T08 |
+| IF-67 | 面板分两个子选项卡：“任务队列”（新任务、队列列表与操作、资源与工具）和“项目与版本”（第 3.2 节任务详情按钮，新增“打开原视频”）；数据根与编辑器设置两边共用 | 3 节 |
+| IF-68 | **停止当前 = `queue stop`**：写 `queue/stop.flag`；执行器取消当前请求的自有进程，该请求记为 `INTERRUPTED`（错误 `PROCESS_CANCELLED`，`details.kind=queue_stop`，`stage`=被停的阶段），队列暂停，下一个请求保持 `QUEUED`；之后“恢复中断任务”沿用原配置新增 attempt，已提交阶段不重跑。**跳过当前 = 对运行中请求 `queue cancel`**：记为 `CANCELLED`，队列接着处理下一个。没有执行器时 `queue stop` 不写任何文件；执行器启动时清掉遗留的停止标记（开始队列是用户的新决定） | 3.2、10.2、10.5 |
+| IF-69 | 队列列表 = `queue list`（只读）：全部请求（被移除的也保留为历史）、显示名、输入、模式、执行状态、当前阶段与已耗时、机器版本、人工版本数、质量状态。目前没有阶段提供可靠的 processed/total，`progress` 恒为 `null`，界面不显示百分比；后台导出/导入也只显示已耗时 | 3.2“不估造整体百分比” |
+| IF-70 | 复制为新任务 = `queue copy`：同一项目、同输入/模式/时间轴/选流/复制原片选项，配置快照、词典版本与资源引用取当前；原请求的快照不变；结果带 `config_changed` | 3.1“复制为新任务才能采用新配置” |
+| IF-71 | 新任务对话框：来源（本地视频/单视频 URL）与显示名必填，显示名只作为一个参数传给命令；四种模式固定，联合分析附“画面驱动不保证原文全部来自画面识别”的说明。多视频流/多音轨、无音轨、词典不支持条目都由命令先拒绝，再作为问题交给用户（选流、改模式、确认条目），按回答重跑命令；不自动换模式、不默认第一条音轨。“已有日文源字幕”依次 `media register`（先定流再建项目）→ `source import` → `submit --mode supplied_source`。只有点“加入队列并开始”才启动执行器 | 3.1、8.5 |
+| IF-72 | 打开原视频 = `media locate`（找不到 → `INPUT_MISSING`，内容不同 → `MEDIA_CHANGED`）→ 用户选现在的位置 → `media relocate`：完整 SHA-256 必须等于登记值，否则 `MEDIA_CHANGED`（要作为新媒体登记）；复制进项目的原片不需要重新定位 | 3.2“重新定位媒体”、10.3 |
+| IF-73 | 资源与工具窗口 = `resources list`（不运行版本探针）+ `resources rebind`；内容身份变化的资源只能重新登记，不能只改路径 | 3.4、10.3 |
+| IF-74 | 队列执行器由窗口以子进程启动（`queue run`）。关闭窗口时若队列或后台导出/导入仍在运行，只提供“取消当前并退出”（先 `queue stop`，最多等 20 秒，再终止自己的子进程；被中止的导出不发布成品，可能留下 `.pending` 临时目录）或“返回”；其他窗口/命令行启动的执行器不受影响。限制：窗口进程异常崩溃时执行器不会随之结束，下次启动按 10.2 把它的请求恢复为 `INTERRUPTED` | 10.5 |
+| CO-CAND-008 | **命令补充**（12.1 未列）：`queue stop`、`queue list`、`queue copy`、`media register`、`media locate`、`media relocate`、`resources list`；`queue run` 的结果多一个 `paused`。另：“停止当前”的请求状态取 `INTERRUPTED`（可恢复）而不是 `CANCELLED`，以区别“跳过当前”。待负责人确认 | 3.2、12.1 |
+| EV-08b | 证据：`tests/upgrade_queue_gui_test.py`（18 个用例：列表文字与按钮规则、停止/跳过/遗留标记的队列语义、`queue copy/list/stop` 与 `media`/`resources` 命令、真实数据根上驱动面板：新任务的选流与词典确认、无音轨不改模式、自带日文字幕、执行器作为窗口子进程运行并恢复/复制/移除、打开原视频与重新定位、关窗只给两种选择）；全套汇总 `LOCAL_WORKSPACE/roast-w08b-tests-summary.json` | 14.3 T02/T05/T08 |
 
 ## 6. 不做的事（W00 重申）
 

@@ -687,7 +687,8 @@ class AutoRoastApp(tk.Tk):
         except Exception as exc:  # the old window keeps working without the v2 code
             ttk.Label(self.v2_tab, text=f"新版项目面板无法加载：{exc}").pack(anchor="w")
             return
-        V2Panel(self.v2_tab, settings_path=CONFIG_PATH.parent / "roast_v2_gui.local.json").pack(fill=tk.BOTH, expand=True)
+        self.v2_panel = V2Panel(self.v2_tab, settings_path=CONFIG_PATH.parent / "roast_v2_gui.local.json")
+        self.v2_panel.pack(fill=tk.BOTH, expand=True)
 
     def _build_tools_tab(self) -> None:
         tab = self.tools_tab
@@ -2406,6 +2407,9 @@ class AutoRoastApp(tk.Tk):
         self.after(120, self._drain_messages)
 
     def _on_close(self) -> None:
+        panel = getattr(self, "v2_panel", None)
+        if panel is not None and not panel.confirm_close():   # v2 queue/export running: stop it first or go back
+            return
         if self.batch_running:
             if not messagebox.askyesno("任务仍在进行", "关闭软件会停止当前任务，确认关闭吗？"):
                 return

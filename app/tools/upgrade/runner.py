@@ -22,6 +22,7 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -30,7 +31,7 @@ from upgrade.contracts import (
     REQUEST_STATUSES, SCHEMA_VERSION, STAGES, ContractError, new_id, require_record, signature, utc_now,
 )
 from upgrade.config import build_config_snapshot
-from upgrade.locks import ExecutorLock, ProjectCommitLock
+from upgrade.locks import EXECUTOR_OWNER, ExecutorLock, ProjectCommitLock, executor_is_live, read_owner
 from upgrade.process_runner import CancelToken
 from upgrade.storage import (
     MANIFEST_NAME, artifact_ref, atomic_write_text, begin_pending, commit_pending, init_project_dir, read_manifest, render_json,
@@ -62,6 +63,11 @@ def envelope_path(data_root: Path | str, request_id: str) -> Path:
 
 def cancel_flag_path(data_root: Path | str, request_id: str) -> Path:
     return queue_dir(data_root) / "cancel" / request_id
+
+
+def stop_flag_path(data_root: Path | str) -> Path:
+    """"Stop current" (plan 3.2): the executor cancels the running request, keeps it resumable and pauses the queue."""
+    return queue_dir(data_root) / "stop.flag"
 
 
 def project_dir(data_root: Path | str, project_id: str) -> Path:
@@ -211,6 +217,18 @@ def cancel(data_root: Path | str, request_id: str) -> dict:
     return envelope
 
 
+def request_stop(data_root: Path | str) -> dict:
+    """Ask the live executor to stop the current request and pause (plan 3.2). Without a live executor nothing is written."""
+    if not executor_is_live(data_root):
+        return {"requested": False, "executor_live": False, "running": []}
+    running = [envelope["request"]["request_id"] for envelope in list_envelopes(data_root, status="RUNNING")]
+    flag = stop_flag_path(data_root)
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text(utc_now(), encoding="utf-8")
+    _queue_event(data_root, {"event": "queue_stop_requested", "running": running})
+    return {"requested": True, "executor_live": True, "running": running}
+
+
 def resume(data_root: Path | str, run_id: str) -> dict:
     """Re-queue the failed/interrupted request of ``run_id`` with its original configuration (new attempts, same run)."""
     for envelope in list_envelopes(data_root):
@@ -223,6 +241,73 @@ def resume(data_root: Path | str, run_id: str) -> dict:
             _queue_event(data_root, {"event": "request_resumed", "request_id": envelope["request"]["request_id"], "run_id": run_id})
             return envelope
     raise ContractError("INPUT_MISSING", f"no request belongs to run {run_id}", details={"run_id": run_id})
+
+
+# --------------------------------------------------------------------------- queue overview (plan 3.2 list)
+
+def _elapsed_seconds(started_at: str | None) -> int | None:
+    if not started_at:
+        return None
+    try:
+        started = datetime.strptime(started_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
+
+
+def _machine_quality(project: Path, revision_id: str) -> dict:
+    from upgrade.contracts import load_record
+    try:
+        report = load_record("QualityReport", project / "revisions" / "machine" / revision_id / "quality.json")
+    except ContractError:
+        return {"structural_status": "unknown", "errors": None, "warnings": None}
+    return {"structural_status": report["structural_status"], "errors": sum(1 for issue in report["issues"] if issue["severity"] == "ERROR"),
+            "warnings": sum(1 for issue in report["issues"] if issue["severity"] == "WARNING")}
+
+
+def queue_rows(data_root: Path | str) -> dict:
+    """Read-only overview for the queue list: every request (history kept), its run state, versions and quality.
+
+    No stage reports a reliable processed/total, so ``progress`` is always None and the list shows the current stage
+    with its elapsed time instead of an estimated percentage (plan 3.2).
+    """
+    data_root = Path(data_root)
+    live = executor_is_live(data_root)
+    owner = read_owner(data_root / EXECUTOR_OWNER) if live else None
+    projects: dict[str, dict | None] = {}
+    rows = []
+    for envelope in list_envelopes(data_root):
+        request = envelope["request"]
+        project_id = request["project_id"]
+        if project_id not in projects:
+            try:
+                projects[project_id] = load_project(data_root, project_id)
+            except ContractError:
+                projects[project_id] = None
+        record, project = projects[project_id], project_dir(data_root, project_id)
+        task = None
+        if envelope.get("run_id"):
+            try:
+                task = load_task(run_dir(project, envelope["run_id"]))
+            except ContractError:
+                task = None
+        running = envelope["status"] == "RUNNING"
+        active = task.get("active_stage") if (task and running) else None
+        started = _stage(task, active).get("started_at") if active else None
+        machine = task.get("machine_revision_id") if task else None
+        error = envelope.get("last_error")
+        rows.append({
+            "request_id": request["request_id"], "project_id": project_id, "run_id": envelope.get("run_id"),
+            "display_name": record.get("display_name") if record else None, "input": dict(request["input"]),
+            "recognition_mode": request["recognition_mode"], "timing_mode": request["timing_mode"], "status": envelope["status"],
+            "active_stage": active, "stage_started_at": started, "elapsed_seconds": _elapsed_seconds(started) if active else None, "progress": None,
+            "machine_revision_id": machine, "human_revisions": len(record.get("review_revision_ids") or []) if record else 0,
+            "quality": _machine_quality(project, machine) if machine else None,
+            "error": {"code": error["code"], "stage": error.get("stage"), "message": error["message"], "kind": (error.get("details") or {}).get("kind")} if error else None,
+            "created_at": request["created_at"], "updated_at": envelope["updated_at"],
+        })
+    return {"executor": {"live": live, "pid": (owner or {}).get("pid"), "started_at": (owner or {}).get("started_at")},
+            "stop_requested": stop_flag_path(data_root).exists(), "requests": rows}
 
 
 # --------------------------------------------------------------------------- task records
@@ -368,11 +453,20 @@ class QueueRunner:
         cancel = cancel or CancelToken()
         if continue_on_error is None:
             continue_on_error = bool(self.config["defaults"]["continue_on_error"])
-        summary: dict[str, Any] = {"processed": 0, "completed": 0, "failed": 0, "cancelled": 0, "interrupted": 0, "recovered": None, "requests": []}
+        summary: dict[str, Any] = {"processed": 0, "completed": 0, "failed": 0, "cancelled": 0, "interrupted": 0, "recovered": None, "requests": [],
+                                   "paused": False}
+        stop_flag = stop_flag_path(self.data_root)
         with ExecutorLock(self.data_root) as lock:
             self.owner_token = lock.owner_token
+            if stop_flag.exists():
+                stop_flag.unlink()        # left over from a stop that arrived as the previous executor ended; starting is the user's new decision
             summary["recovered"] = _recover_owned(self.data_root)  # we hold the lock: no other executor is live
             while not cancel.is_set():
+                if stop_flag.exists():
+                    stop_flag.unlink()
+                    summary["paused"] = True
+                    _queue_event(self.data_root, {"event": "queue_paused"})
+                    break
                 queued = list_envelopes(self.data_root, status="QUEUED")
                 if not queued:
                     break
@@ -442,6 +536,11 @@ class QueueRunner:
         flag = cancel_flag_path(self.data_root, request_id)
         if flag.exists():
             flag.unlink()
+        if final_status == "CANCELLED" and cancel.reason == "queue_stop":
+            final_status = "INTERRUPTED"          # "stop current": the request stays resumable; "skip current" stays CANCELLED
+            stopped = next((stage["name"] for stage in task["stages"] if stage["status"] == "CANCELLED"), None)
+            task["last_error"] = ContractError("PROCESS_CANCELLED", "stopped by the user; resume to continue", stage=stopped, retryable=True,
+                                               details={"kind": "queue_stop"}).to_dict()
         task["status"] = final_status
         task["active_stage"] = None
         _save_task(run, task)
@@ -458,9 +557,13 @@ class QueueRunner:
 
     def _watch_cancel(self, request_id: str, cancel: CancelToken, global_cancel: CancelToken, stop: threading.Event) -> None:
         flag = cancel_flag_path(self.data_root, request_id)
+        stop_flag = stop_flag_path(self.data_root)
         while not stop.is_set():
             if global_cancel.is_set():
                 cancel.cancel(global_cancel.reason or "executor_stop")
+                return
+            if stop_flag.exists():
+                cancel.cancel("queue_stop")
                 return
             if flag.exists():
                 cancel.cancel("user_request")
@@ -653,6 +756,7 @@ def _recover_owned(data_root: Path) -> dict:
 
 __all__ = [
     "STAGE_VERSIONS", "MODE_SKIPS", "StageContext", "StageImpl", "QueueRunner", "build_job_request", "submit", "cancel", "resume", "recover",
+    "request_stop", "stop_flag_path", "queue_rows",
     "recover_run_pointers", "list_envelopes", "load_envelope", "load_task", "create_project", "load_project", "update_project",
     "envelope_path", "project_dir", "run_dir", "stage_signature",
 ]
