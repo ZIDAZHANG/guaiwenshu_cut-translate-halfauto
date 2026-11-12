@@ -162,7 +162,8 @@ def run_tool(executable: Path, argv: list[str], *, log_dir: Path, label: str, ru
     if target.exists():
         raise ContractError("OUTPUT_EXISTS", f"tool log directory already exists: {label}", details={"path": str(target)})
     target.mkdir(parents=True)
-    spec = process_spec(executable, argv, cwd=cwd or target, log_dir=target, owner_token=runtime.owner_token, capability_id=capability_id)
+    # the tools only use absolute paths; their own folder is a short working directory however deep the data root is
+    spec = process_spec(executable, argv, cwd=cwd or executable.parent, log_dir=target, owner_token=runtime.owner_token, capability_id=capability_id)
     result = run_process(spec, runtime.cancel, runtime.emit)
     if result["cancelled"] or runtime.cancel.is_set():
         raise ContractError("PROCESS_CANCELLED", f"{label} was cancelled", retryable=True)
@@ -1050,7 +1051,8 @@ def download_media(url: str, *, runtime: MediaRuntime) -> dict:
     argv = prefix + download_argv(url, files, runtime.download_settings, ffmpeg)
     logs = pending / "logs" / "yt-dlp"
     logs.mkdir(parents=True)
-    spec = process_spec(executable, argv, cwd=files, log_dir=logs, owner_token=runtime.owner_token, capability_id="cpu", env_overrides=env)
+    # yt-dlp writes to the absolute -o template; the worker's own folder keeps the working directory short
+    spec = process_spec(executable, argv, cwd=Path(executable).parent, log_dir=logs, owner_token=runtime.owner_token, capability_id="cpu", env_overrides=env)
     result = run_process(spec, runtime.cancel, runtime.emit)
     if result["cancelled"] or runtime.cancel.is_set():
         raise ContractError("PROCESS_CANCELLED", "download was cancelled", retryable=True)

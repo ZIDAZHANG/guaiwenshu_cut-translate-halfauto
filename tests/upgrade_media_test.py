@@ -4,6 +4,7 @@ The second half runs a real FFmpeg and ffprobe on S05 material built by this tes
 constant and variable frame timing, non-zero start, rotation, no audio, two audio streams, glued transport stream,
 HDR-tagged, odd size). It is skipped, not passed, when FFMPEG_BINARY / FFPROBE_BINARY are not available.
 """
+from dataclasses import replace as dataclasses_replace
 from fractions import Fraction
 from pathlib import Path
 import json
@@ -457,6 +458,19 @@ class RealMediaTests(unittest.TestCase):
         with self.assertRaises(c.ContractError) as ctx:
             self.prepare(project_dir, record, needs_audio=False)
         self.assertEqual(ctx.exception.code, "INPUT_MISSING")
+
+    def test_tools_start_however_deep_the_data_root_is(self):
+        """Found in the T08 acceptance: a data root about 85 characters deep put ffprobe's working directory past MAX_PATH."""
+        deep = self.tmp / ("深层目录" * 12) / ("d" * 160) / "logs"
+        try:
+            deep.mkdir(parents=True)
+        except OSError as exc:
+            self.skipTest(f"this Windows does not allow long paths for Python: {exc}")
+        self.assertGreater(len(str(deep / "ffprobe-streams")), 260)
+        runtime = dataclasses_replace(self.runtime(self.tmp), log_dir=deep)
+        raw_bytes, raw = media.probe_format_streams(self.cfr, runtime)
+        self.assertEqual([stream["codec_type"] for stream in raw["streams"]][:1], ["video"])
+        self.assertTrue((deep / "ffprobe-streams" / "stdout.log").is_file())
 
     def test_copy_original_points_at_the_project_copy(self):
         project_dir, project_id = self.project()

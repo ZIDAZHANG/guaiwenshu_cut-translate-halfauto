@@ -201,6 +201,14 @@ D01–D20、FR01–FR16、QC01–QC23、W00–W10、T01–T09、B01–B11 全部
 | CO-CAND-008 | **命令补充**（12.1 未列）：`queue stop`、`queue list`、`queue copy`、`media register`、`media locate`、`media relocate`、`resources list`；`queue run` 的结果多一个 `paused`。另：“停止当前”的请求状态取 `INTERRUPTED`（可恢复）而不是 `CANCELLED`，以区别“跳过当前”。待负责人确认 | 3.2、12.1 |
 | EV-08b | 证据：`tests/upgrade_queue_gui_test.py`（18 个用例：列表文字与按钮规则、停止/跳过/遗留标记的队列语义、`queue copy/list/stop` 与 `media`/`resources` 命令、真实数据根上驱动面板：新任务的选流与词典确认、无音轨不改模式、自带日文字幕、执行器作为窗口子进程运行并恢复/复制/移除、打开原视频与重新定位、关窗只给两种选择）；全套汇总 `LOCAL_WORKSPACE/roast-w08b-tests-summary.json` | 14.3 T02/T05/T08 |
 
+## 5i. T08 准备记录（2026-11-12）
+
+| 编号 | 决定/事实 | 依据 |
+| --- | --- | --- |
+| IF-75 | **工具工作目录过深（准备 T08 时发现的缺陷）**：FFmpeg/ffprobe（`media.run_tool` 的默认）和 yt-dlp 原来以项目深处的日志/输出目录为工作目录。数据根约 85 字符深时，ffprobe 的工作目录达到 261 字符，Windows 拒绝启动进程（WinError 267，即使开启了长路径），整条流水线在 INPUT 阶段失败；测试用的临时目录较短，所以之前没有暴露。改为：这些工具以自己的程序目录为工作目录（它们的输入输出都是绝对路径）；`process_runner` 对超过 247 字符的工作目录直接报 `PATH_INVALID`，提示把数据根放到更短的路径。OCR/语音识别本来就在 ASCII 临时根里运行，导出在 ASCII 工作目录里运行，不受影响。证据：`upgrade_media_test.test_tools_start_however_deep_the_data_root_is`（日志目录超过 260 字符时 ffprobe 正常运行；去掉修复则失败）、`upgrade_process_runner_test.test_a_working_directory_windows_cannot_use_is_refused_clearly` | 4.3、10.5 |
+| EV-T08-0 | Subtitle Edit v5.4.0：官方 GitHub 发布的 `SubtitleEdit-Windows-x64.zip`（116,450,758 字节，SHA-256 `88015b35…c920` 与发布摘要一致），经用户同意以便携方式解压到执行机工作区（不运行安装程序、不改系统）；启动冒烟通过（带 SRT 参数启动并显示该文件，窗口标题 `smoke.srt - Subtitle Edit v5.4.0`）。许可证 MIT，作为用户自装的外部程序，不随本程序分发。已登记到 `resources-inventory.json` | B05 |
+| Q-T08-1 | 实机往返要操作编辑器窗口（改字、拖时间、拆分合并、保存重开）。本会话没有桌面操作工具：等用户在 Claude 桌面应用里开启“Computer use”，或由用户亲手按步骤操作。真实素材 S01 不在执行机上，往返改用合成 S05 片段，验收记录会写明这一替代；Aegisub 仍未安装（B05 的 ASS 部分仍阻塞） | 14 T08、B05、B08 |
+
 ## 6. 不做的事（W00 重申）
 
 不删除 VoiceTransl/剪映相关源码，不为商用换模型，不更新全局 Python，不重写分段算法，不下载模型，不修改 D 盘旧目录、原媒体、旧词典，不在用户文档目录写入任何文件。

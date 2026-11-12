@@ -366,14 +366,20 @@
     {
       "resource_id": "editor.subtitle-edit",
       "kind": "editor",
-      "present": false,
+      "present": true,
       "role": "D03_srt_editor",
-      "absolute_path": null,
-      "version_text": null,
+      "absolute_path": "LOCAL_WORKSPACE/tools/SubtitleEdit-5.4.0/SubtitleEdit.exe",
+      "version_text": "Subtitle Edit v5.4.0 (window title; FileVersion 5.4.0.0)",
       "upstream_url": "https://github.com/SubtitleEdit/subtitleedit",
-      "upstream_revision": null,
-      "content_sha256": null,
-      "files": [],
+      "upstream_revision": "v5.4.0",
+      "content_sha256": "da0173668ad34201d003ee5b9c2423eea06c38e2c00b074ea1a77c479e44dd4e",
+      "files": [
+        {
+          "path": "SubtitleEdit.exe",
+          "sha256": "da0173668ad34201d003ee5b9c2423eea06c38e2c00b074ea1a77c479e44dd4e",
+          "bytes": 140730005
+        }
+      ],
       "capabilities": {
         "cpu": "not_applicable",
         "gpu_vulkan": "not_applicable",
@@ -385,11 +391,21 @@
         "libass": "not_applicable",
         "json_probe": "not_applicable"
       },
-      "license_status": "unresolved",
-      "license_note": null,
-      "inspected_at": "2026-11-08T12:20:18Z",
+      "license_status": "recorded",
+      "license_note": "MIT (LICENSE in the release zip); a user-installed external program, never redistributed with this tool",
+      "inspected_at": "2026-11-12T12:10:00Z",
       "extensions": {
-        "blocker": "B05"
+        "blocker": "B05 (Subtitle Edit part resolved; Aegisub still missing)",
+        "release_asset": {
+          "name": "SubtitleEdit-Windows-x64.zip",
+          "url": "https://github.com/SubtitleEdit/subtitleedit/releases/download/v5.4.0/SubtitleEdit-Windows-x64.zip",
+          "bytes": 116450758,
+          "sha256": "88015b354332a3028d83ce4b992ec5325d03411df190769c8a87fcd459c6b920",
+          "sha256_matches_release_digest": true,
+          "published_at": "2026-11-06T04:47:56Z"
+        },
+        "install": "portable zip extracted with the user's approval on 2026-11-12; no installer, no system change",
+        "smoke": "starts with a SRT argument and shows it (window title 'smoke.srt - Subtitle Edit v5.4.0')"
       }
     },
     {
@@ -616,6 +632,6 @@
     "LOCAL_WORKSPACE": "执行机工作区",
     "USER_HOME": "执行机用户目录"
   },
-  "updated_by": "W03",
-  "updated_at": "2026-11-09T16:06:05Z"
+  "updated_by": "T08 preparation",
+  "updated_at": "2026-11-12T12:10:00Z"
 }

@@ -49,6 +49,16 @@ class ProcessRunnerTests(unittest.TestCase):
                 run_process(spec)
             self.assertEqual(ctx.exception.code, "RESOURCE_MISSING")
 
+    @unittest.skipUnless(sys.platform == "win32", "the working-directory length limit is a Windows CreateProcess rule")
+    def test_a_working_directory_windows_cannot_use_is_refused_clearly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            deep = Path(tmp) / ("深" * 120) / ("x" * 140)          # longer than MAX_PATH; it does not even need to exist
+            spec = process_spec(sys.executable, ["-c", "print(1)"], cwd=deep, log_dir=Path(tmp) / "logs", owner_token="t")
+            with self.assertRaises(c.ContractError) as ctx:
+                run_process(spec)
+            self.assertEqual((ctx.exception.code, ctx.exception.details["limit"]), ("PATH_INVALID", 247))
+            self.assertIn("shorter path", ctx.exception.message)
+
     def test_cancel_terminates_owned_tree_and_spares_unrelated_process(self):
         with tempfile.TemporaryDirectory() as tmp:
             marker = Path(tmp) / "grandchild_survived.txt"

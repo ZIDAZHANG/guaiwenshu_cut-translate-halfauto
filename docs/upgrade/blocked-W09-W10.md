@@ -13,7 +13,7 @@ W00–W08 的代码与测试都在本执行机上完成，但 W09/W10 的验收�
 | 验收项（计划 W09 / 14.3） | 本机现状 | 阻塞 | 到位后怎么做 |
 | --- | --- | --- | --- |
 | T07 真实引擎：短片两种既有模式、一个纯画面样本、一次长片全流程与中断恢复 | 没有计划指定的 whisper.cpp（whisper-cli + ggml-large-v3 + silero VAD）、MagiaTimeline、llama-server + Sakura-GalTransl-7B-v3.7 的精确构建；测试里这些都是进程边界上的替身 | B01、B03、B04、B08 | `resources register` 登记真实资源 → 用 S01/S02 跑 `submit` + `queue run`（combined、speech_only、visual_only）→ 中途 `queue cancel` 后 `resume` → 证据集中放到独立 acceptance 目录，人工核对语义后登记 T07 |
-| T08 实际人工工作流：Subtitle Edit 改字/拖时间/拆并/保存重开/登记导出；Aegisub 保存重开并实际渲染比对层与样式 | 没有安装 Subtitle Edit、Aegisub | B05 | 安装指定版本 → 在“新版项目与校对”选项卡里：创建校对副本 → 用编辑器打开 → 保存 → 登记校对稿 → 标记人工确认 → 导出字幕/视频；Aegisub 渲染截图与成片同帧比对 |
+| T08 实际人工工作流：Subtitle Edit 改字/拖时间/拆并/保存重开/登记导出；Aegisub 保存重开并实际渲染比对层与样式 | Subtitle Edit 5.4.0 已于 2026-11-12 安装（便携版，见 decisions 5i）；实机操作待桌面操作授权或用户亲手操作（Q-T08-1）；Aegisub 未安装；真实素材 S01 缺（B08） | B05 | 安装指定版本 → 在“新版项目与校对”选项卡里：创建校对副本 → 用编辑器打开 → 保存 → 登记校对稿 → 标记人工确认 → 导出字幕/视频；Aegisub 渲染截图与成片同帧比对 |
 | T09 便携候选：one-dir 冻结包、冻结 worker、不使用开发者 Python、移动路径与无开发环境验证 | 只有隔离 venv（CPython 3.10.6）；没有 3.13（W01 选定）与冻结工具；没有干净 Windows | B02、B09 | 授权安装 3.13 与冻结工具 → 生成 one-dir 候选 → 在干净机上从移动后的路径运行全部命令 |
 | 本机 CPU/GPU profile 与峰值 | 未测（真实引擎缺） | B04 | 随 T07 记录 |
 

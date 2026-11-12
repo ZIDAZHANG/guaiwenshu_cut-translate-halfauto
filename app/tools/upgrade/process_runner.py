@@ -28,6 +28,7 @@ from upgrade.storage import artifact_ref, atomic_write_text, render_json
 
 CANCEL_GRACE_SECONDS = 3.0
 POLL_SECONDS = 0.2
+MAX_CWD_CHARS = 247   # Windows cannot start a process whose working directory is MAX_PATH (260) long or more, even with long paths enabled
 EventSink = Callable[[dict], None]
 
 
@@ -182,6 +183,9 @@ class ProcessHandle:
         if not executable.is_file():
             raise ContractError("RESOURCE_MISSING", f"executable not found: {executable}", details={"executable": str(executable)})
         cwd = Path(spec["cwd"])
+        if sys.platform == "win32" and len(str(cwd)) > MAX_CWD_CHARS:
+            raise ContractError("PATH_INVALID", f"the working directory of {executable.name} is {len(str(cwd))} characters long; Windows cannot start a "
+                                "process there. Move the data root to a shorter path", details={"cwd": str(cwd), "limit": MAX_CWD_CHARS})
         if not cwd.is_dir():
             raise ContractError("INPUT_MISSING", f"cwd does not exist: {cwd}", details={"cwd": str(cwd)})
         env = os.environ.copy()
